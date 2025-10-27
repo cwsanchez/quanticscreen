@@ -53,7 +53,7 @@ def main():
 
     # Warnings (Step 7 end)
     print("\n**Warnings**:")
-    high_pe = [r['metrics']['Ticker'] for r in results if get_float(r['metrics']['P/E']) > 30]
+    high_pe = [r['metrics']['Ticker'] for r in results if get_float(r['metrics'], 'P/E') > 30]
     print(f"- High P/E stocks needing review: {', '.join(high_pe) if high_pe else 'None'}.")
     print("- Monitor debt burdens and market volatility.")
 

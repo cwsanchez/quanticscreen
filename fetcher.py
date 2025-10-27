@@ -24,8 +24,9 @@ def fetch_metrics(ticker):
 
     # Stricter prompt: Forces JSON output, multi-source
     prompt = f"""
-    Use tools to search and browse Yahoo Finance and Finviz for {ticker} metrics (latest available).
-    Extract and average values where they differ: P/E (trailing), ROE (%), D/E, P/B, PEG, Gross Margin (%), Net Profit Margin (%), FCF % EV TTM, EBITDA % EV TTM, Current Price, 52W High, 52W Low, Market Cap, EV, Total Cash, Total Debt.
+    Use server-side tools to search and browse Yahoo Finance and Finviz for {ticker} metrics (latest available).
+    Extract values from both sources, average where they differ (e.g., if P/E is 20 on Yahoo and 22 on Finviz, use 21).
+    Metrics: P/E (trailing), ROE (%), D/E, P/B, PEG, Gross Margin (%), Net Profit Margin (%), FCF % EV TTM, EBITDA % EV TTM, Current Price, 52W High, 52W Low, Market Cap, EV, Total Cash, Total Debt.
     Use N/A if missing. Output STRICT JSON only: {{"P/E": value, "ROE": value, ...}}. No other text or explanations.
     """
     try:
@@ -33,39 +34,9 @@ def fetch_metrics(ticker):
             model="grok-4-fast",  # Agentic-optimized; fallback to "grok-beta" if inaccessible
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,  # Low for factual
-            tools=[  # Server-side tool definitions
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "web_search",
-                        "description": "Perform a general web search for real-time info.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {"type": "string", "description": "The search query."},
-                                "num_results": {"type": "integer", "description": "Number of results (default 10, max 30)."}
-                            },
-                            "required": ["query"]
-                        }
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "browse_page",
-                        "description": "Fetch and extract content from a specific webpage URL.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "url": {"type": "string", "description": "The URL to browse."},
-                                "instructions": {"type": "string", "description": "What to extract/summarize (optional)."}
-                            },
-                            "required": ["url"]
-                        }
-                    }
-                }
-            ],
-            stream=False  # Get full response; set True for progress if needed
+            tools=["web_search", "browse_page"],  # Simple list for server-side agentic execution
+            tool_choice="auto",  # Encourages autonomous tool use
+            stream=False  # Get full response
         )
         print("Full API response:")
         print(json.dumps(response.model_dump(), indent=2))  # Debug: Check citations, tool usage

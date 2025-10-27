@@ -2,4 +2,5 @@
 requests
 python-dotenv
 xai-sdk
+openai
 pandas  # Uncomment if added

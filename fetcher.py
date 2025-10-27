@@ -2,7 +2,7 @@
 import os
 import json
 from dotenv import load_dotenv
-from xai import Client  # Official SDK for agentic support
+from xai_sdk import Client  # Official SDK for agentic support
 
 load_dotenv()  # Loads GROK_API_KEY from .env
 

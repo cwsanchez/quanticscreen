@@ -29,17 +29,60 @@ def fetch_metrics(ticker):
     Use N/A if missing. Output STRICT JSON only: {{"P/E": value, "ROE": value, ...}}. No other text or explanations.
     """
     payload = {
-        "model": "grok-4-fast",  # Supports agentic tools; fallback to "grok-4" if needed
-        "tools": ["browse_page", "web_search"],  # Enable browsing specific sites and general search
+        "model": "grok-4-fast",  # Supports agentic tools
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2  # Low for factual
+        "temperature": 0.2,  # Low for factual
+        "tools": [  # Full tool definitions required for agentic calling
+            {
+                "type": "function",
+                "function": {
+                    "name": "browse_page",
+                    "description": "Fetch and summarize content from a specific webpage URL.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The URL of the webpage to browse."
+                            },
+                            "instructions": {
+                                "type": "string",
+                                "description": "Instructions for what to extract or summarize from the page."
+                            }
+                        },
+                        "required": ["url", "instructions"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Perform a general web search.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The search query."
+                            },
+                            "num_results": {
+                                "type": "integer",
+                                "description": "Number of results to return (default 10, max 30)."
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            }
+        ]
     }
 
     try:
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
         content = response.json()['choices'][0]['message']['content']
-        # Attempt to parse JSON; strip any leading/trailing non-JSON (e.g., if model adds intro)
+        # Attempt to parse JSON; strip any leading/trailing non-JSON
         try:
             metrics = json.loads(content)
         except json.JSONDecodeError:

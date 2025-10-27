@@ -2,7 +2,7 @@
 import os
 import json
 from dotenv import load_dotenv
-from xai_sdk import Client  # Official SDK for agentic support
+from openai import OpenAI  # OpenAI SDK for xAI compatibility
 
 load_dotenv()  # Loads GROK_API_KEY from .env
 
@@ -17,7 +17,10 @@ def fetch_metrics(ticker):
         print("Error: GROK_API_KEY not set in .env")
         return {}
 
-    client = Client(api_key=api_key)
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://api.x.ai/v1"  # xAI endpoint
+    )
 
     # Stricter prompt: Forces JSON output, multi-source
     prompt = f"""
@@ -27,18 +30,45 @@ def fetch_metrics(ticker):
     """
     try:
         response = client.chat.completions.create(
-            model="grok-4-fast",  # Recommended for agentic; fallback to "grok-3" if inaccessible
+            model="grok-4-fast",  # Agentic-optimized; fallback to "grok-beta" if inaccessible
             messages=[{"role": "user", "content": prompt}],
-            tools=["web_search"],  # Enables server-side web search + browsing
-            tool_params={
-                "web_search": {
-                    "allowed_domains": ["finance.yahoo.com", "finviz.com"]  # Restrict to sources for efficiency/accuracy
+            temperature=0.2,  # Low for factual
+            tools=[  # Server-side tool definitions
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "description": "Perform a general web search for real-time info.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "The search query."},
+                                "num_results": {"type": "integer", "description": "Number of results (default 10, max 30)."}
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "browse_page",
+                        "description": "Fetch and extract content from a specific webpage URL.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "url": {"type": "string", "description": "The URL to browse."},
+                                "instructions": {"type": "string", "description": "What to extract/summarize (optional)."}
+                            },
+                            "required": ["url"]
+                        }
+                    }
                 }
-            },
-            temperature=0.2  # Low for factual
+            ],
+            stream=False  # Get full response; set True for progress if needed
         )
         print("Full API response:")
-        print(json.dumps(response.model_dump(), indent=2))  # Debug: See citations, tool usage, etc.
+        print(json.dumps(response.model_dump(), indent=2))  # Debug: Check citations, tool usage
         content = response.choices[0].message.content
         # Parse JSON; strip non-JSON if needed
         try:

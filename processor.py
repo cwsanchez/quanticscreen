@@ -1,15 +1,19 @@
 # processor.py
 
+# Helper to get float value or 0
+def get_float(metrics, key):
+    """
+    Helper to get float value from metrics dict or 0 if N/A/missing.
+    """
+    val = metrics.get(key, 'N/A')
+    return float(val) if val != 'N/A' else 0.0
+
 def process_stock(metrics):
     """
     Processes a single stock's metrics per algorithm steps 2-5.
     Returns dict with: base_score, final_score, flags (list), positives (str), risks (str), factor_boosts (dict for value/momentum/etc.).
     Handles N/A as 0 for scoring.
     """
-    # Helper to get float value or 0
-    def get_float(key):
-        val = metrics.get(key, 'N/A')
-        return float(val) if val != 'N/A' else 0.0
 
     # Step 2: Individual Metric Scoring (0-10)
     pe = get_float('P/E')

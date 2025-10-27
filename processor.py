@@ -1,6 +1,5 @@
 # processor.py
 
-# Helper to get float value or 0
 def get_float(metrics, key):
     """
     Helper to get float value from metrics dict or 0 if N/A/missing.
@@ -14,42 +13,43 @@ def process_stock(metrics):
     Returns dict with: base_score, final_score, flags (list), positives (str), risks (str), factor_boosts (dict for value/momentum/etc.).
     Handles N/A as 0 for scoring.
     """
+    # Use the top-level get_float
+    pe = get_float(metrics, 'P/E')
+    roe = get_float(metrics, 'ROE')
+    de = get_float(metrics, 'D/E')
+    pb = get_float(metrics, 'P/B')
+    peg = get_float(metrics, 'PEG')
+    gross = get_float(metrics, 'Gross Margin')
+    net = get_float(metrics, 'Net Profit Margin')
+    fcf_ev = get_float(metrics, 'FCF % EV TTM')
+    ebitda_ev = get_float(metrics, 'EBITDA % EV TTM')
+    cash = get_float(metrics, 'Total Cash')
+    mcap = get_float(metrics, 'Market Cap')
+    price = get_float(metrics, 'Current Price')
+    high = get_float(metrics, '52W High')
+    low = get_float(metrics, '52W Low')
+    debt = get_float(metrics, 'Total Debt')
 
     # Step 2: Individual Metric Scoring (0-10)
-    pe = get_float('P/E')
     pe_score = 10 if pe < 15 else 7 if pe < 20 else 5 if pe < 30 else 2 if pe < 40 else 0
 
-    roe = get_float('ROE')
     roe_score = 10 if roe > 15 else 7 if roe >= 10 else 5 if roe >= 5 else 0
 
-    de = get_float('D/E')
     de_score = 10 if de < 1 else 7 if de < 1.5 else 5 if de < 2 else 0
 
-    pb = get_float('P/B')
     pb_score = 10 if pb < 1.5 else 7 if pb < 2.5 else 5 if pb < 4 else 0
 
-    peg = get_float('PEG')
     peg_score = 10 if peg < 1 else 7 if peg < 1.5 else 5 if peg < 2 else 0
 
-    gross = get_float('Gross Margin')
     gross_score = 10 if gross > 40 else 7 if gross >= 30 else 5 if gross >= 20 else 0
 
-    net = get_float('Net Profit Margin')
     net_score = 10 if net > 15 else 7 if net >= 10 else 5 if net >= 5 else 0
 
-    fcf_ev = get_float('FCF % EV TTM')
     fcf_ev_score = 10 if fcf_ev > 5 else 7 if fcf_ev >= 3 else 5 if fcf_ev >= 1 else 0
 
-    ebitda_ev = get_float('EBITDA % EV TTM')
     ebitda_ev_score = 10 if ebitda_ev > 10 else 7 if ebitda_ev >= 5 else 5 if ebitda_ev >= 2 else 0
 
     # Balance score
-    cash = get_float('Total Cash')
-    mcap = get_float('Market Cap')
-    price = get_float('Current Price')
-    high = get_float('52W High')
-    low = get_float('52W Low')
-    debt = get_float('Total Debt')
     balance_score = 10 if (cash > 0.2 * mcap) or (price > 0.8 * high) else 0 if (debt > mcap) or (price < 1.1 * low) else 5
 
     # Step 3: Weighting & Base Score (0-100)
@@ -104,7 +104,7 @@ def process_stock(metrics):
     # Step 5: Factor Lens (Extra Boosts, sub-rankings in main.py)
     factor_boosts = {
         'value': 10 if pb < 1.5 and roe > 15 else 0,  # Value
-        'momentum': 5 if price > 0.9 * high and get_float('FCF Actual') > 0 else 0,  # Momentum
+        'momentum': 5 if price > 0.9 * high and get_float(metrics, 'FCF Actual') > 0 else 0,  # Momentum
         'quality': 10 if gross > 40 and net > 15 and de < 1 else 0,  # Quality
         'growth': 5 if peg < 1 and 1e9 < mcap < 1e11 else 0  # Growth (mid-cap ~1B-100B)
     }

@@ -34,23 +34,35 @@ def fetch_metrics(ticker):
             model="grok-4-fast",  # Agentic-optimized; fallback to "grok-beta" if inaccessible
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,  # Low for factual
-            tools=["web_search", "browse_page"],  # Simple list for server-side agentic execution
-            tool_choice="auto",  # Encourages autonomous tool use
-            stream=False  # Get full response
+            tools=[  # Correct format for built-in server-side tools
+                {"type": "web_search"},
+                {"type": "browse_page"}
+            ],
+            tool_choice="auto",  # Encourages autonomous use
+            stream=True  # Recommended for agentic observability
         )
-        print("Full API response:")
-        print(json.dumps(response.model_dump(), indent=2))  # Debug: Check citations, tool usage
-        content = response.choices[0].message.content
-        # Parse JSON; strip non-JSON if needed
+        # Collect streamed content and debug tool calls
+        full_content = ""
+        print("Streaming response chunks:")
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                full_content += delta.content
+                print(delta.content, end="", flush=True)  # Stream to console for visibility
+            if delta.tool_calls:
+                print(f"\nTool call detected: {json.dumps(delta.tool_calls, indent=2)}")  # Debug tool invocations
+        print("\nFull collected content:")
+        print(full_content)
+        # Parse JSON from collected content; strip non-JSON if needed
         try:
-            metrics = json.loads(content)
+            metrics = json.loads(full_content)
         except json.JSONDecodeError:
-            start = content.find('{')
-            end = content.rfind('}') + 1
+            start = full_content.find('{')
+            end = full_content.rfind('}') + 1
             if start != -1 and end != -1:
-                metrics = json.loads(content[start:end])
+                metrics = json.loads(full_content[start:end])
             else:
-                print(f"JSON parse error for {ticker}: {content}")
+                print(f"JSON parse error for {ticker}: {full_content}")
                 return {}
         return metrics
     except Exception as e:

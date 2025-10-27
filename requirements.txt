@@ -1,4 +1,5 @@
 # requirements.txt
 requests
 python-dotenv
+xai-sdk
 pandas  # Uncomment if added

@@ -1,14 +1,14 @@
 # fetcher.py
-import requests
 import os
 import json
 from dotenv import load_dotenv
+from xai import Client  # Official SDK for agentic support
 
 load_dotenv()  # Loads GROK_API_KEY from .env
 
 def fetch_metrics(ticker):
     """
-    Fetches stock metrics for a single ticker using Grok API with agentic tools enabled.
+    Fetches stock metrics for a single ticker using Grok API with server-side agentic tools.
     Prompt targets multi-source averaging to reduce hallucinations.
     Returns dict or empty on error.
     """
@@ -17,65 +17,30 @@ def fetch_metrics(ticker):
         print("Error: GROK_API_KEY not set in .env")
         return {}
 
-    url = "https://api.x.ai/v1/chat/completions"  # xAI endpoint
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    # Updated prompt: Encourage tool use, clarify extraction/averaging
+    client = Client(api_key=api_key)
+
+    # Stricter prompt: Forces JSON output, multi-source
     prompt = f"""
-    Use available tools to browse Yahoo Finance and Finviz (or equivalent sources) for the latest metrics on {ticker}.
-    Extract values from multiple sources if possible, average them where they differ (e.g., if P/E is 20 on one site and 22 on another, use 21).
-    Metrics: P/E (trailing), ROE (%), D/E, P/B, PEG, Gross Margin (%), Net Profit Margin (%), FCF % EV TTM, EBITDA % EV TTM, Current Price, 52W High, 52W Low, Market Cap, EV, Total Cash, Total Debt.
-    Use N/A if missing or unavailable. Output STRICT JSON only: {{"P/E": value, "ROE": value, ...}}. No other text.
+    Use tools to search and browse Yahoo Finance and Finviz for {ticker} metrics (latest available).
+    Extract and average values where they differ: P/E (trailing), ROE (%), D/E, P/B, PEG, Gross Margin (%), Net Profit Margin (%), FCF % EV TTM, EBITDA % EV TTM, Current Price, 52W High, 52W Low, Market Cap, EV, Total Cash, Total Debt.
+    Use N/A if missing. Output STRICT JSON only: {{"P/E": value, "ROE": value, ...}}. No other text or explanations.
     """
-    payload = {
-        "model": "grok-4-fast",  # Try this first; if issues, switch to "grok-3" below
-        # "model": "grok-3",  # Fallback if grok-4-fast inaccessible (limited agentic support)
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,  # Low for factual
-        "tools": [  # Server-side tool definitions
-            {
-                "type": "function",
-                "function": {
-                    "name": "web_search",
-                    "description": "Perform a general web search.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string", "description": "The search query."},
-                            "num_results": {"type": "integer", "description": "Number of results (default 10, max 30)."}
-                        },
-                        "required": ["query"]
-                    }
+    try:
+        response = client.chat.completions.create(
+            model="grok-4-fast",  # Recommended for agentic; fallback to "grok-3" if inaccessible
+            messages=[{"role": "user", "content": prompt}],
+            tools=["web_search"],  # Enables server-side web search + browsing
+            tool_params={
+                "web_search": {
+                    "allowed_domains": ["finance.yahoo.com", "finviz.com"]  # Restrict to sources for efficiency/accuracy
                 }
             },
-            {
-                "type": "function",
-                "function": {
-                    "name": "browse_page",
-                    "description": "Fetch and summarize content from a specific webpage URL.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "url": {"type": "string", "description": "The URL of the webpage to browse."},
-                            "instructions": {"type": "string", "description": "Instructions for what to extract or summarize from the page."}
-                        },
-                        "required": ["url"]  # Made instructions optional to match examples/avoid issues
-                    }
-                }
-            }
-        ]
-    }
-
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        full_response = response.json()
+            temperature=0.2  # Low for factual
+        )
         print("Full API response:")
-        print(json.dumps(full_response, indent=2))  # Debug: See full details, including tool usage
-        content = full_response['choices'][0]['message']['content']
-        # Parse JSON; strip non-JSON
+        print(json.dumps(response.model_dump(), indent=2))  # Debug: See citations, tool usage, etc.
+        content = response.choices[0].message.content
+        # Parse JSON; strip non-JSON if needed
         try:
             metrics = json.loads(content)
         except json.JSONDecodeError:
@@ -84,16 +49,11 @@ def fetch_metrics(ticker):
             if start != -1 and end != -1:
                 metrics = json.loads(content[start:end])
             else:
-                raise
+                print(f"JSON parse error for {ticker}: {content}")
+                return {}
         return metrics
-    except requests.exceptions.HTTPError as e:
-        print(f"HTTP error for {ticker}: {e} - Response: {e.response.text if e.response else 'No response'}")
-        return {}
-    except json.JSONDecodeError:
-        print(f"JSON parse error for {ticker}: {content}")
-        return {}
     except Exception as e:
-        print(f"Unexpected error for {ticker}: {e}")
+        print(f"Error for {ticker}: {e}")
         return {}
 
 # Test

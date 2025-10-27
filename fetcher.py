@@ -22,38 +22,19 @@ def fetch_metrics(ticker):
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
-    # Stricter prompt: Forces JSON output, multi-source
+    # Updated prompt: Encourage tool use, clarify extraction/averaging
     prompt = f"""
-    Browse Yahoo Finance and Finviz for {ticker} metrics (latest available).
-    Extract and average: P/E (trailing), ROE (%), D/E, P/B, PEG, Gross Margin (%), Net Profit Margin (%), FCF % EV TTM, EBITDA % EV TTM, Current Price, 52W High, 52W Low, Market Cap, EV, Total Cash, Total Debt.
-    Use N/A if missing. Output STRICT JSON only: {{"P/E": value, "ROE": value, ...}}. No other text or explanations.
+    Use available tools to browse Yahoo Finance and Finviz (or equivalent sources) for the latest metrics on {ticker}.
+    Extract values from multiple sources if possible, average them where they differ (e.g., if P/E is 20 on one site and 22 on another, use 21).
+    Metrics: P/E (trailing), ROE (%), D/E, P/B, PEG, Gross Margin (%), Net Profit Margin (%), FCF % EV TTM, EBITDA % EV TTM, Current Price, 52W High, 52W Low, Market Cap, EV, Total Cash, Total Debt.
+    Use N/A if missing or unavailable. Output STRICT JSON only: {{"P/E": value, "ROE": value, ...}}. No other text.
     """
     payload = {
-        "model": "grok-4-fast",  # Supports agentic tools
+        "model": "grok-4-fast",  # Try this first; if issues, switch to "grok-3" below
+        # "model": "grok-3",  # Fallback if grok-4-fast inaccessible (limited agentic support)
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,  # Low for factual
-        "tools": [  # Full tool definitions required for agentic calling
-            {
-                "type": "function",
-                "function": {
-                    "name": "browse_page",
-                    "description": "Fetch and summarize content from a specific webpage URL.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "url": {
-                                "type": "string",
-                                "description": "The URL of the webpage to browse."
-                            },
-                            "instructions": {
-                                "type": "string",
-                                "description": "Instructions for what to extract or summarize from the page."
-                            }
-                        },
-                        "required": ["url", "instructions"]
-                    }
-                }
-            },
+        "tools": [  # Server-side tool definitions
             {
                 "type": "function",
                 "function": {
@@ -62,16 +43,25 @@ def fetch_metrics(ticker):
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "The search query."
-                            },
-                            "num_results": {
-                                "type": "integer",
-                                "description": "Number of results to return (default 10, max 30)."
-                            }
+                            "query": {"type": "string", "description": "The search query."},
+                            "num_results": {"type": "integer", "description": "Number of results (default 10, max 30)."}
                         },
                         "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "browse_page",
+                    "description": "Fetch and summarize content from a specific webpage URL.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {"type": "string", "description": "The URL of the webpage to browse."},
+                            "instructions": {"type": "string", "description": "Instructions for what to extract or summarize from the page."}
+                        },
+                        "required": ["url"]  # Made instructions optional to match examples/avoid issues
                     }
                 }
             }
@@ -81,12 +71,14 @@ def fetch_metrics(ticker):
     try:
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
-        content = response.json()['choices'][0]['message']['content']
-        # Attempt to parse JSON; strip any leading/trailing non-JSON
+        full_response = response.json()
+        print("Full API response:")
+        print(json.dumps(full_response, indent=2))  # Debug: See full details, including tool usage
+        content = full_response['choices'][0]['message']['content']
+        # Parse JSON; strip non-JSON
         try:
             metrics = json.loads(content)
         except json.JSONDecodeError:
-            # Find the first { and last } to extract potential JSON block
             start = content.find('{')
             end = content.rfind('}') + 1
             if start != -1 and end != -1:

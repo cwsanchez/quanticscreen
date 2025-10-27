@@ -3,4 +3,5 @@ requests
 python-dotenv
 xai-sdk
 openai
+yfinance
 pandas  # Uncomment if added

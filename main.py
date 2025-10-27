@@ -1,7 +1,7 @@
 # main.py
 import argparse
 from fetcher import fetch_metrics
-from processor import process_stock
+from processor import process_stock, get_float
 
 def main():
     parser = argparse.ArgumentParser(description="StockSimTool CLI")

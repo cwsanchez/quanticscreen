@@ -24,9 +24,8 @@ def fetch_metrics(ticker):
 
     # Stricter prompt: Forces JSON output, multi-source
     prompt = f"""
-    Use server-side tools to search and browse Yahoo Finance and Finviz for {ticker} metrics (latest available).
-    Extract values from both sources, average where they differ (e.g., if P/E is 20 on Yahoo and 22 on Finviz, use 21).
-    Metrics: P/E (trailing), ROE (%), D/E, P/B, PEG, Gross Margin (%), Net Profit Margin (%), FCF % EV TTM, EBITDA % EV TTM, Current Price, 52W High, 52W Low, Market Cap, EV, Total Cash, Total Debt.
+    Use tools to search and browse Yahoo Finance and Finviz for {ticker} metrics (latest available).
+    Extract and average values where they differ: P/E (trailing), ROE (%), D/E, P/B, PEG, Gross Margin (%), Net Profit Margin (%), FCF % EV TTM, EBITDA % EV TTM, Current Price, 52W High, 52W Low, Market Cap, EV, Total Cash, Total Debt.
     Use N/A if missing. Output STRICT JSON only: {{"P/E": value, "ROE": value, ...}}. No other text or explanations.
     """
     try:
@@ -34,35 +33,53 @@ def fetch_metrics(ticker):
             model="grok-4-fast",  # Agentic-optimized; fallback to "grok-beta" if inaccessible
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,  # Low for factual
-            tools=[  # Correct format for built-in server-side tools
-                {"type": "web_search"},
-                {"type": "browse_page"}
+            tools=[  # Server-side tool definitions
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "description": "Perform a general web search for real-time info.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "The search query."},
+                                "num_results": {"type": "integer", "description": "Number of results (default 10, max 30)."}
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "browse_page",
+                        "description": "Fetch and extract content from a specific webpage URL.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "url": {"type": "string", "description": "The URL to browse."},
+                                "instructions": {"type": "string", "description": "What to extract/summarize (optional)."}
+                            },
+                            "required": ["url"]
+                        }
+                    }
+                }
             ],
-            tool_choice="auto",  # Encourages autonomous use
-            stream=True  # Recommended for agentic observability
+            stream=False  # Get full response; set True for progress if needed
         )
-        # Collect streamed content and debug tool calls
-        full_content = ""
-        print("Streaming response chunks:")
-        for chunk in response:
-            delta = chunk.choices[0].delta
-            if delta.content:
-                full_content += delta.content
-                print(delta.content, end="", flush=True)  # Stream to console for visibility
-            if delta.tool_calls:
-                print(f"\nTool call detected: {json.dumps(delta.tool_calls, indent=2)}")  # Debug tool invocations
-        print("\nFull collected content:")
-        print(full_content)
-        # Parse JSON from collected content; strip non-JSON if needed
+        print("Full API response:")
+        print(json.dumps(response.model_dump(), indent=2))  # Debug: Check citations, tool usage
+        content = response.choices[0].message.content
+        # Parse JSON; strip non-JSON if needed
         try:
-            metrics = json.loads(full_content)
+            metrics = json.loads(content)
         except json.JSONDecodeError:
-            start = full_content.find('{')
-            end = full_content.rfind('}') + 1
+            start = content.find('{')
+            end = content.rfind('}') + 1
             if start != -1 and end != -1:
-                metrics = json.loads(full_content[start:end])
+                metrics = json.loads(content[start:end])
             else:
-                print(f"JSON parse error for {ticker}: {full_content}")
+                print(f"JSON parse error for {ticker}: {content}")
                 return {}
         return metrics
     except Exception as e:

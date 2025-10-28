@@ -1,7 +1,6 @@
-# db.py (updated with caching query)
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, relationship, joinedload  # Added joinedload
 from sqlalchemy.dialects.sqlite import insert
 from datetime import datetime, timedelta
 import json
@@ -77,7 +76,7 @@ def get_latest_metrics(ticker):
     Returns reconstructed metrics dict (like from fetch_metrics) or None if no recent data.
     """
     session = Session()
-    latest_fetch = session.query(MetricFetch).filter_by(ticker=ticker).order_by(desc(MetricFetch.fetch_timestamp)).first()
+    latest_fetch = session.query(MetricFetch).options(joinedload(MetricFetch.stock)).filter_by(ticker=ticker).order_by(desc(MetricFetch.fetch_timestamp)).first()
     session.close()
 
     if not latest_fetch:
@@ -86,7 +85,7 @@ def get_latest_metrics(ticker):
     fetch_time = datetime.fromisoformat(latest_fetch.fetch_timestamp)
     if datetime.now() - fetch_time < timedelta(hours=24):
         # Reconstruct metrics dict
-        stock = latest_fetch.stock  # Via relationship
+        stock = latest_fetch.stock  # Via relationship (now eager-loaded)
         metrics = {
             'Ticker': ticker,
             'Company Name': stock.company_name if stock else 'N/A',

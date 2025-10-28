@@ -134,16 +134,6 @@ if top_results:
     displayed_columns = [col for col in all_columns if col not in excluded_columns]
     df = df[displayed_columns]  # Filter to non-excluded
 
-    # CSS for chip color (e.g., blue instead of red)
-    st.markdown("""
-        <style>
-        div[data-testid="stMultiSelect"] .stTag {
-            background-color: #007bff !important;  /* Blue */
-            color: white !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
     st.subheader("Ranked Top Stocks")
     st.dataframe(df, width='stretch', height=400, hide_index=False)  # Keeps index
 

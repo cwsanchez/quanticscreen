@@ -64,6 +64,12 @@ def init_db():
     Initializes the database by creating tables if they don't exist.
     """
     Base.metadata.create_all(engine)
+    # Migration: Set old default timestamp for any records missing fetch_timestamp to force re-fetch on next seed
+    session = Session()
+    old_date = datetime(2000, 1, 1).isoformat()
+    session.query(MetricFetch).filter(MetricFetch.fetch_timestamp.is_(None)).update({MetricFetch.fetch_timestamp: old_date})
+    session.commit()
+    session.close()
 
 def get_value_from_db(val):
     """
@@ -109,7 +115,9 @@ def get_latest_metrics(ticker):
             'Total Cash': get_value_from_db(latest_fetch.total_cash),
             'Total Debt': get_value_from_db(latest_fetch.total_debt),
             'FCF Actual': get_value_from_db(latest_fetch.fcf_actual),
-            'EBITDA Actual': get_value_from_db(latest_fetch.ebitda_actual)
+            'EBITDA Actual': get_value_from_db(latest_fetch.ebitda_actual),
+            'fetch_timestamp': latest_fetch.fetch_timestamp,  # Added for potential future use, though not required after seeder simplification
+            'fetch_id': latest_fetch.fetch_id  # Added to allow direct access if needed
         }
         return metrics
     return None
@@ -197,6 +205,10 @@ def save_processed(processed, fetch_id):
     Stores flags and factor_boosts as JSON strings.
     """
     session = Session()
+    existing = session.query(ProcessedResult).filter_by(fetch_id=fetch_id).first()
+    if existing:
+        session.close()
+        return  # Skip if already exists to avoid duplicates on re-seed
 
     flags_json = json.dumps(processed['flags'])
     factor_boosts_json = json.dumps(processed['factor_boosts'])

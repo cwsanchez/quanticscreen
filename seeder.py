@@ -23,19 +23,13 @@ def seed():
         for ticker in batch:
             metrics = get_latest_metrics(ticker)
             if metrics is None:
-                # No data, fetch
+                # No data or stale, fetch fresh (staleness check is handled in db.get_latest_metrics, which returns None if >72h old or missing)
                 metrics = fetch_metrics(ticker)
                 if metrics:
                     fetch_id = save_metrics(metrics)
                     processed = process_stock(metrics)
                     save_processed(processed, fetch_id)
-            elif (datetime.now() - datetime.fromisoformat(metrics['fetch_timestamp'])) > timedelta(hours=72):
-                # Stale, re-fetch
-                metrics = fetch_metrics(ticker)
-                if metrics:
-                    fetch_id = save_metrics(metrics)
-                    processed = process_stock(metrics)
-                    save_processed(processed, fetch_id)
+                # Note: This simplifies the logic by trusting db.py to manage cache validity, fixing KeyError when 'fetch_timestamp' was missing in metrics dict
 
 if __name__ == "__main__":
     seed()

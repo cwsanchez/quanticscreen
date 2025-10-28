@@ -3,13 +3,18 @@ from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processe
 from processor import get_float
 import pandas as pd
 from seeder import seed
+import os
 import io  # For CSV export
+
+from dotenv import load_dotenv
+load_dotenv()  # Loads .env vars
 
 st.set_page_config(layout="wide")  # Wider page
 
 # Password protection
-password = st.text_input("Enter password to access the app", type="password")
-if password != "your_secret_password_here":  # Replace with your actual password
+PASSWORD = os.getenv("APP_PASSWORD")  # Env var name; set to your secret value
+entered_password = st.text_input("Enter password to access the app", type="password")
+if entered_password != PASSWORD:
     st.error("Incorrect password. Please try again.")
     st.stop()
 

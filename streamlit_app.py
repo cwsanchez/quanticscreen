@@ -1,4 +1,3 @@
-# streamlit_app.py (main Streamlit app for screening)
 import streamlit as st
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
 from processor import get_float
@@ -50,27 +49,28 @@ if force_refresh:
 results.sort(key=lambda x: x['final_score'], reverse=True)
 top_results = results[:num_top]
 
-# Display ranked table using pandas for better view (sortable, searchable)
+# Display ranked table using pandas (split metrics into columns for better readability/scrolling)
 if top_results:
     df_data = []
-    for i, res in enumerate(top_results, 1):
+    for res in top_results:
         m = res['metrics']
-        details = (
-            f"P/E: {m['P/E']}\nROE: {m['ROE']}%\nP/B: {m['P/B']}\nPEG: {m['PEG']}\n"
-            f"Gross: {m['Gross Margin']}%\nFCF/EV: {m['FCF % EV TTM']}%\nD/E: {m['D/E']}"
-        )
         df_data.append({
-            "#": i,
             "Company (Ticker)": f"{m['Company Name']} ({m['Ticker']})",
-            "Score": round(res['final_score'], 2),
-            "Quantitative Details": details,
+            "Score": round(res['final_score'], 2),  # Rounded to hundredths
+            "P/E": m['P/E'],
+            "ROE %": m['ROE'],
+            "P/B": m['P/B'],
+            "PEG": m['PEG'],
+            "Gross Margin %": m['Gross Margin'],
+            "FCF/EV %": m['FCF % EV TTM'],
+            "D/E": m['D/E'],
             "Flags": ", ".join(res['flags']),
             "Positives": res['positives'],
             "Risks": res['risks']
         })
     df = pd.DataFrame(df_data)
     st.subheader("Ranked Top Stocks")
-    st.dataframe(df, use_container_width=True, height=400)  # Interactive table
+    st.dataframe(df, use_container_width=True, height=400, hide_index=False)  # Keeps Streamlit index; metrics in separate columns for horizontal scroll
 
     # Factor Sub-Lists
     factors = ['value', 'momentum', 'quality', 'growth']

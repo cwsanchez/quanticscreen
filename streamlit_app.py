@@ -2,7 +2,7 @@ import streamlit as st
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
 from processor import get_float
 import pandas as pd
-import numpy as np  # Added for np.nan
+import numpy as np  # For np.nan
 from seeder import seed
 import io  # For CSV export
 import os
@@ -84,7 +84,7 @@ top_results = results if show_all else results[:num_top]
 if search and not top_results:
     st.info("No matches found. Note: Results are ranked by score; low-scoring stocks may not appear unless 'Show All' is checked.")
 
-# Display ranked table using pandas (no risks, rounded)
+# Display ranked table using pandas (added new columns, combined 52W for space)
 if top_results:
     df_data = []
     for res in top_results:
@@ -102,6 +102,11 @@ if top_results:
         df_data.append({
             "Company (Ticker)": f"{m['Company Name']} ({m['Ticker']})",
             "Score": round(res['final_score'], 2),
+            "Price": round(get_float(m, 'Current Price'), 2),
+            "52W High/Low": f"{round(get_float(m, '52W High'), 2)} / {round(get_float(m, '52W Low'), 2)}",
+            "EV": f"{round(get_float(m, 'EV') / 1e9, 2)}B" if get_float(m, 'EV') > 1e9 else round(get_float(m, 'EV'), 2),
+            "Total Cash": f"{round(get_float(m, 'Total Cash') / 1e9, 2)}B" if get_float(m, 'Total Cash') > 1e9 else round(get_float(m, 'Total Cash'), 2),
+            "Total Debt": f"{round(get_float(m, 'Total Debt') / 1e9, 2)}B" if get_float(m, 'Total Debt') > 1e9 else round(get_float(m, 'Total Debt'), 2),
             "P/E": round(get_float(m, 'P/E'), 2),
             "ROE %": round(get_float(m, 'ROE'), 2),
             "P/B": round(get_float(m, 'P/B'), 2),
@@ -114,7 +119,7 @@ if top_results:
         })
     df = pd.DataFrame(df_data)
     st.subheader("Ranked Top Stocks")
-    st.dataframe(df, width='stretch', height=400, hide_index=False)  # Updated deprecation, stretch for full width
+    st.dataframe(df, width='stretch', height=400, hide_index=False)  # Keeps index
 
     # Export button
     csv = df.to_csv(index=False).encode('utf-8')

@@ -1,5 +1,3 @@
-# processor.py
-
 def get_float(metrics, key):
     """
     Helper to get float value from metrics dict or 0 if N/A/missing.
@@ -12,6 +10,7 @@ def process_stock(metrics):
     Processes a single stock's metrics per algorithm steps 2-5.
     Returns dict with: base_score, final_score, flags (list), positives (str), risks (str), factor_boosts (dict for value/momentum/etc.).
     Handles N/A as 0 for scoring.
+    Overall flow: Score individual metrics (0-10), weight to base (0-100), apply multi-metric correlations for boosts/penalties/flags, add factor lens boosts.
     """
     # Use the top-level get_float
     pe = get_float(metrics, 'P/E')
@@ -69,44 +68,56 @@ def process_stock(metrics):
     flags = []
     boost_penalty = 0.0
 
+    # Indicates undervalued companies with strong profitability/efficiency.
     if pe < 15 and roe > 15:
         boost_penalty += 15
-        flags.append("Strong value")
+        flags.append("Undervalued")
 
+    # Indicates strong balance sheet with low leverage/liquidity buffer.
     if de < 1 and cash > 0.1 * mcap:
         boost_penalty += 10
-        flags.append("Resilient")
+        flags.append("Strong Balance Sheet")
 
+    # Indicates quality moat with sustainable profitability/cash generation.
     if gross > 40 and net > 15 and fcf_ev > 5:
         boost_penalty += 15
-        flags.append("Durable")
+        flags.append("Quality Moat")
 
+    # Indicates growth at reasonable price (GARP).
     if peg < 1 and 15 <= pe <= 25:
         boost_penalty += 10
-        flags.append("Balanced growth")
+        flags.append("GARP")
 
+    # Indicates high-risk growth potential.
     if pe > 30 and peg < 0.8:
-        boost_penalty -= 10  # Sentiment override ignored for now
-        flags.append("Speculative")
+        boost_penalty -= 10
+        flags.append("High-Risk Growth")
 
+    # Indicates potential value trap (cheap but poor returns).
     if pb < 1.5 and roe < 5:
         boost_penalty -= 10
-        flags.append("Bargain risk")
+        flags.append("Value Trap")
 
+    # Indicates positive momentum with operational strength.
     if price > 0.9 * high and ebitda_ev > 10:
         boost_penalty += 5
-        flags.append("Momentum building")
+        flags.append("Momentum Building")
 
+    # Indicates debt burden with strained cash flow.
     if de > 2 and fcf_ev < 3:
         boost_penalty -= 15
-        flags.append("Strain")
+        flags.append("Debt Burden")
 
     # Step 5: Factor Lens (Extra Boosts, sub-rankings in main.py)
     factor_boosts = {
-        'value': 10 if pb < 1.5 and roe > 15 else 0,  # Value
-        'momentum': 5 if price > 0.9 * high and get_float(metrics, 'FCF Actual') > 0 else 0,  # Momentum
-        'quality': 10 if gross > 40 and net > 15 and de < 1 else 0,  # Quality
-        'growth': 5 if peg < 1 and 1e9 < mcap < 1e11 else 0  # Growth (mid-cap ~1B-100B)
+        # Identifies undervalued assets with strong equity returns.
+        'value': 10 if pb < 1.5 and roe > 15 else 0,
+        # Identifies upward trends with cash support.
+        'momentum': 5 if price > 0.9 * high and get_float(metrics, 'FCF Actual') > 0 else 0,
+        # Identifies high-quality businesses with profitability/low leverage.
+        'quality': 10 if gross > 40 and net > 15 and de < 1 else 0,
+        # Identifies growth at reasonable scale.
+        'growth': 5 if peg < 1 and 1e9 < mcap < 1e11 else 0
     }
     factor_boost_total = sum(factor_boosts.values())
 

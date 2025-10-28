@@ -3,5 +3,5 @@ requests
 python-dotenv
 streamlit
 yfinance
-sqlaclhemy
-pandas  # Uncomment if added
+pandas
+sqlalchemy

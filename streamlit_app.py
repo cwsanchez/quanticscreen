@@ -1,4 +1,3 @@
-# streamlit_app.py (updated: wide layout, search, multiselect, export, no risks, rounded)
 import streamlit as st
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
 from processor import get_float
@@ -7,6 +6,12 @@ from seeder import seed
 import io  # For CSV export
 
 st.set_page_config(layout="wide")  # Wider page
+
+# Password protection
+password = st.text_input("Enter password to access the app", type="password")
+if password != "your_secret_password_here":  # Replace with your actual password
+    st.error("Incorrect password. Please try again.")
+    st.stop()
 
 init_db()
 

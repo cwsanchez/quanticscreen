@@ -30,6 +30,7 @@ def process_stock(metrics):
     debt = get_float(metrics, 'Total Debt')
 
     # Step 2: Individual Metric Scoring (0-10)
+    # (Comments on single-metric thresholds omitted as per user: only multi-metric correlations need explanation)
     pe_score = 10 if pe < 15 else 7 if pe < 20 else 5 if pe < 30 else 2 if pe < 40 else 0
 
     roe_score = 10 if roe > 15 else 7 if roe >= 10 else 5 if roe >= 5 else 0
@@ -124,9 +125,9 @@ def process_stock(metrics):
     # Final Score
     final_score = base_score * (1 + (boost_penalty / 100)) + factor_boost_total
 
-    # Positives/Risks (concise, tied to metrics/flags)
-    positives = f"Strong ROE ({roe}%) and FCF % EV ({fcf_ev}%) indicate efficiency. Flags: {', '.join(flags) if flags else 'None'}."
-    risks = f"High D/E ({de}) may strain balance sheet. Watch debt ({debt})." if de > 2 or debt > mcap else "Low risks based on metrics."
+    # Positives/Risks (concise, tied to metrics/flags; rounded to 2 decimals, no flags in positives)
+    positives = f"Strong ROE ({round(roe, 2)}%) and FCF % EV ({round(fcf_ev, 2)}%) indicate efficiency."
+    risks = f"High D/E ({round(de, 2)}) may strain balance sheet. Watch debt ({round(debt, 2)})." if de > 2 or debt > mcap else "Low risks based on metrics."
 
     return {
         'base_score': base_score,

@@ -1,8 +1,12 @@
+# streamlit_app.py (updated: wide layout, search, multiselect, export, no risks, rounded)
 import streamlit as st
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
 from processor import get_float
 import pandas as pd
 from seeder import seed
+import io  # For CSV export
+
+st.set_page_config(layout="wide")  # Wider page
 
 init_db()
 
@@ -45,32 +49,45 @@ elif dataset == "Sector":
 if force_refresh:
     st.warning("Force refresh not implemented for all; re-seed or re-run for selected tickers.")
 
+# Additional filters
+search = st.text_input("Search Ticker/Company")
+if search:
+    results = [r for r in results if search.lower() in r['metrics']['Ticker'].lower() or search.lower() in r['metrics']['Company Name'].lower()]
+
+unique_flags = sorted(set(flag for res in results for flag in res['flags']))
+selected_flags = st.multiselect("Filter by Flags", unique_flags)
+if selected_flags:
+    results = [r for r in results if any(flag in r['flags'] for flag in selected_flags)]
+
 # Rank by final_score desc
 results.sort(key=lambda x: x['final_score'], reverse=True)
 top_results = results[:num_top]
 
-# Display ranked table using pandas (split metrics into columns for better readability/scrolling)
+# Display ranked table using pandas (no risks, rounded)
 if top_results:
     df_data = []
     for res in top_results:
         m = res['metrics']
         df_data.append({
             "Company (Ticker)": f"{m['Company Name']} ({m['Ticker']})",
-            "Score": round(res['final_score'], 2),  # Rounded to hundredths
-            "P/E": m['P/E'],
-            "ROE %": m['ROE'],
-            "P/B": m['P/B'],
-            "PEG": m['PEG'],
-            "Gross Margin %": m['Gross Margin'],
-            "FCF/EV %": m['FCF % EV TTM'],
-            "D/E": m['D/E'],
+            "Score": round(res['final_score'], 2),
+            "P/E": round(m['P/E'], 2) if m['P/E'] != 'N/A' else 'N/A',
+            "ROE %": round(m['ROE'], 2) if m['ROE'] != 'N/A' else 'N/A',
+            "P/B": round(m['P/B'], 2) if m['P/B'] != 'N/A' else 'N/A',
+            "PEG": round(m['PEG'], 2) if m['PEG'] != 'N/A' else 'N/A',
+            "Gross Margin %": round(m['Gross Margin'], 2) if m['Gross Margin'] != 'N/A' else 'N/A',
+            "FCF/EV %": round(m['FCF % EV TTM'], 2) if m['FCF % EV TTM'] != 'N/A' else 'N/A',
+            "D/E": round(m['D/E'], 2) if m['D/E'] != 'N/A' else 'N/A',
             "Flags": ", ".join(res['flags']),
             "Positives": res['positives'],
-            "Risks": res['risks']
         })
     df = pd.DataFrame(df_data)
     st.subheader("Ranked Top Stocks")
-    st.dataframe(df, use_container_width=True, height=400, hide_index=False)  # Keeps Streamlit index; metrics in separate columns for horizontal scroll
+    st.dataframe(df, use_container_width=True, height=400, hide_index=False)  # Keeps index
+
+    # Export button
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("Export CSV", data=csv, file_name="top_stocks.csv", mime="text/csv")
 
     # Factor Sub-Lists
     factors = ['value', 'momentum', 'quality', 'growth']
@@ -82,7 +99,7 @@ if top_results:
             for res in top_factor:
                 if res['factor_boosts'][factor] > 0:
                     m = res['metrics']
-                    reason = f"High score due to relevant metrics (e.g., ROE: {m['ROE']}%, Flags: {', '.join(res['flags'])})."
+                    reason = f"High score due to relevant metrics (e.g., ROE: {round(m['ROE'], 2)}%, Flags: {', '.join(res['flags'])})."
                     st.markdown(f"- {m['Company Name']} ({m['Ticker']}): {reason}")
 
     # Warnings

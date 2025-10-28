@@ -13,9 +13,19 @@ st.set_page_config(layout="wide")  # Wider page
 
 # Password protection from env
 PASSWORD = os.getenv("APP_PASSWORD")  # Env var name; set to your secret value
-entered_password = st.text_input("Enter password to access the app", type="password")
-if entered_password != PASSWORD:
-    st.error("Incorrect password. Please try again.")
+
+# Use session state to persist authentication
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    entered_password = st.text_input("Enter password to access the app", type="password")
+    if st.button("Submit"):
+        if entered_password == PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()  # Rerun to refresh the app
+        else:
+            st.error("Incorrect password. Please try again.")
     st.stop()
 
 init_db()

@@ -84,14 +84,14 @@ top_results = results if show_all else results[:num_top]
 if search and not top_results:
     st.info("No matches found. Note: Results are ranked by score; low-scoring stocks may not appear unless 'Show All' is checked.")
 
-# Helper to format large numbers as B/M
+# Helper to format large numbers as B/M (returns str)
 def format_large(val):
     if val >= 1e9:
         return f"{round(val / 1e9, 2)}B"
     elif val >= 1e6:
         return f"{round(val / 1e6, 2)}M"
     else:
-        return round(val, 2)
+        return f"{round(val, 2)}"
 
 # Display ranked table using pandas (added new columns, combined 52W for space)
 if top_results:
@@ -110,19 +110,19 @@ if top_results:
         
         df_data.append({
             "Company (Ticker)": f"{m['Company Name']} ({m['Ticker']})",
-            "Score": round(res['final_score'], 2),
-            "Price": round(get_float(m, 'Current Price'), 2),
-            "52W High/Low": f"{round(get_float(m, '52W High'), 2)} / {round(get_float(m, '52W Low'), 2)}",
-            "EV": format_large(get_float(m, 'EV')),
-            "Total Cash": format_large(get_float(m, 'Total Cash')),
-            "Total Debt": format_large(get_float(m, 'Total Debt')),
-            "P/E": round(get_float(m, 'P/E'), 2),
-            "ROE %": round(get_float(m, 'ROE'), 2),
-            "P/B": round(get_float(m, 'P/B'), 2),
-            "PEG": round(get_float(m, 'PEG'), 2),
-            "Gross Margin %": round(get_float(m, 'Gross Margin'), 2),
-            "FCF/EV %": round(get_float(m, 'FCF % EV TTM'), 2),
-            "D/E": round(get_float(m, 'D/E'), 2),
+            "Score": f"{round(res['final_score'], 2)}",
+            "Price": f"{round(get_float(m, 'Current Price'), 2)}" if m['Current Price'] != 'N/A' else 'N/A',
+            "52W High/Low": f"{round(get_float(m, '52W High'), 2)} / {round(get_float(m, '52W Low'), 2)}" if m['52W High'] != 'N/A' else 'N/A',
+            "EV": format_large(get_float(m, 'EV')) if m['EV'] != 'N/A' else 'N/A',
+            "Total Cash": format_large(get_float(m, 'Total Cash')) if m['Total Cash'] != 'N/A' else 'N/A',
+            "Total Debt": format_large(get_float(m, 'Total Debt')) if m['Total Debt'] != 'N/A' else 'N/A',
+            "P/E": f"{round(get_float(m, 'P/E'), 2)}" if m['P/E'] != 'N/A' else 'N/A',
+            "ROE %": f"{round(get_float(m, 'ROE'), 2)}" if m['ROE'] != 'N/A' else 'N/A',
+            "P/B": f"{round(get_float(m, 'P/B'), 2)}" if m['P/B'] != 'N/A' else 'N/A',
+            "PEG": f"{round(get_float(m, 'PEG'), 2)}" if m['PEG'] != 'N/A' else 'N/A',
+            "Gross Margin %": f"{round(get_float(m, 'Gross Margin'), 2)}" if m['Gross Margin'] != 'N/A' else 'N/A',
+            "FCF/EV %": f"{round(get_float(m, 'FCF % EV TTM'), 2)}" if m['FCF % EV TTM'] != 'N/A' else 'N/A',
+            "D/E": f"{round(get_float(m, 'D/E'), 2)}" if m['D/E'] != 'N/A' else 'N/A',
             "Flags": ", ".join(res['flags']),
             "Positives": positives_str,
         })

@@ -2,6 +2,7 @@ import streamlit as st
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
 from processor import get_float
 import pandas as pd
+import numpy as np  # Added for np.nan
 from seeder import seed
 import io  # For CSV export
 import os
@@ -101,19 +102,19 @@ if top_results:
         df_data.append({
             "Company (Ticker)": f"{m['Company Name']} ({m['Ticker']})",
             "Score": round(res['final_score'], 2),
-            "P/E": round(get_float(m, 'P/E'), 2) if m['P/E'] != 'N/A' else 'N/A',
-            "ROE %": round(get_float(m, 'ROE'), 2) if m['ROE'] != 'N/A' else 'N/A',
-            "P/B": round(get_float(m, 'P/B'), 2) if m['P/B'] != 'N/A' else 'N/A',
-            "PEG": round(get_float(m, 'PEG'), 2) if m['PEG'] != 'N/A' else 'N/A',
-            "Gross Margin %": round(get_float(m, 'Gross Margin'), 2) if m['Gross Margin'] != 'N/A' else 'N/A',
-            "FCF/EV %": round(get_float(m, 'FCF % EV TTM'), 2) if m['FCF % EV TTM'] != 'N/A' else 'N/A',
-            "D/E": round(get_float(m, 'D/E'), 2) if m['D/E'] != 'N/A' else 'N/A',
+            "P/E": round(get_float(m, 'P/E'), 2),
+            "ROE %": round(get_float(m, 'ROE'), 2),
+            "P/B": round(get_float(m, 'P/B'), 2),
+            "PEG": round(get_float(m, 'PEG'), 2),
+            "Gross Margin %": round(get_float(m, 'Gross Margin'), 2),
+            "FCF/EV %": round(get_float(m, 'FCF % EV TTM'), 2),
+            "D/E": round(get_float(m, 'D/E'), 2),
             "Flags": ", ".join(res['flags']),
             "Positives": positives_str,
         })
     df = pd.DataFrame(df_data)
     st.subheader("Ranked Top Stocks")
-    st.dataframe(df, use_container_width=True, height=400, hide_index=False)  # Keeps index
+    st.dataframe(df, width='stretch', height=400, hide_index=False)  # Updated deprecation, stretch for full width
 
     # Export button
     csv = df.to_csv(index=False).encode('utf-8')

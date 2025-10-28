@@ -1,6 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship, joinedload  # Added joinedload
+from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.dialects.sqlite import insert
 from datetime import datetime, timedelta
 import json
@@ -15,6 +15,7 @@ class Stock(Base):
     ticker = Column(String, primary_key=True)
     company_name = Column(String)
     industry = Column(String)
+    sector = Column(String)  # New: Sector for filtering
 
 class MetricFetch(Base):
     __tablename__ = 'MetricFetches'
@@ -72,7 +73,7 @@ def get_value_from_db(val):
 
 def get_latest_metrics(ticker):
     """
-    Retrieves the latest metrics for a ticker if fetched <24 hours ago.
+    Retrieves the latest metrics for a ticker if fetched <72 hours ago.
     Returns reconstructed metrics dict (like from fetch_metrics) or None if no recent data.
     """
     session = Session()
@@ -83,13 +84,14 @@ def get_latest_metrics(ticker):
         return None
 
     fetch_time = datetime.fromisoformat(latest_fetch.fetch_timestamp)
-    if datetime.now() - fetch_time < timedelta(hours=24):
+    if datetime.now() - fetch_time < timedelta(hours=72):
         # Reconstruct metrics dict
         stock = latest_fetch.stock  # Via relationship (now eager-loaded)
         metrics = {
             'Ticker': ticker,
             'Company Name': stock.company_name if stock else 'N/A',
             'Industry': stock.industry if stock else 'N/A',
+            'Sector': stock.sector if stock else 'N/A',
             'P/E': get_value_from_db(latest_fetch.pe),
             'ROE': get_value_from_db(latest_fetch.roe),
             'D/E': get_value_from_db(latest_fetch.de),
@@ -112,10 +114,36 @@ def get_latest_metrics(ticker):
         return metrics
     return None
 
+def get_latest_processed(ticker):
+    """
+    Retrieves the latest processed results for a ticker, linked to the latest fetch.
+    Returns processed dict or None if not available.
+    """
+    session = Session()
+    latest_fetch = session.query(MetricFetch).filter_by(ticker=ticker).order_by(desc(MetricFetch.fetch_timestamp)).first()
+    if latest_fetch:
+        pr = session.query(ProcessedResult).filter_by(fetch_id=latest_fetch.fetch_id).first()
+        if pr:
+            flags = json.loads(pr.flags)
+            factor_boosts = json.loads(pr.factor_boosts)
+            processed = {
+                'base_score': pr.base_score,
+                'final_score': pr.final_score,
+                'flags': flags,
+                'positives': pr.positives,
+                'risks': pr.risks,
+                'factor_boosts': factor_boosts,
+                'metrics': get_latest_metrics(ticker)
+            }
+            session.close()
+            return processed
+    session.close()
+    return None
+
 def save_metrics(metrics):
     """
     Saves raw metrics to DB with current timestamp.
-    Upserts Stock, inserts MetricFetch.
+    Upserts Stock (now with sector), inserts MetricFetch.
     Returns the fetch_id.
     """
     session = Session()
@@ -123,12 +151,13 @@ def save_metrics(metrics):
     ticker = metrics['Ticker']
     company_name = metrics.get('Company Name', 'N/A')
     industry = metrics.get('Industry', 'N/A')
+    sector = metrics.get('Sector', 'N/A')
 
     # Upsert Stock
-    stmt = insert(Stock).values(ticker=ticker, company_name=company_name, industry=industry)
+    stmt = insert(Stock).values(ticker=ticker, company_name=company_name, industry=industry, sector=sector)
     stmt = stmt.on_conflict_do_update(
         index_elements=['ticker'],
-        set_={'company_name': company_name, 'industry': industry}
+        set_={'company_name': company_name, 'industry': industry, 'sector': sector}
     )
     session.execute(stmt)
 
@@ -184,3 +213,21 @@ def save_processed(processed, fetch_id):
     session.add(result)
     session.commit()
     session.close()
+
+def get_all_tickers():
+    """
+    Returns list of all seeded tickers in DB.
+    """
+    session = Session()
+    tickers = [t[0] for t in session.query(Stock.ticker).all()]
+    session.close()
+    return tickers
+
+def get_unique_sectors():
+    """
+    Returns list of unique sectors in DB.
+    """
+    session = Session()
+    sectors = [s[0] for s in session.query(Stock.sector).distinct().all() if s[0] != 'N/A']
+    session.close()
+    return sorted(sectors)

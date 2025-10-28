@@ -1,4 +1,3 @@
-# fetcher.py
 import yfinance as yf
 
 def fetch_metrics(ticker):
@@ -6,7 +5,7 @@ def fetch_metrics(ticker):
     Fetches stock metrics for a single ticker using yfinance (Yahoo Finance API).
     Returns dict with metrics in the expected format, or empty on error.
     Handles calculations for % metrics and includes actual $ values where needed.
-    Added: Company name and industry for output table.
+    Added: Company name, industry, and sector for output table and filtering.
     """
     try:
         stock = yf.Ticker(ticker)
@@ -16,6 +15,7 @@ def fetch_metrics(ticker):
             "Ticker": ticker,
             "Company Name": info.get('longName', 'N/A'),
             "Industry": info.get('industry', 'N/A'),
+            "Sector": info.get('sector', 'N/A'),
             "P/E": info.get('trailingPE', 'N/A'),
             "ROE": info.get('returnOnEquity', 'N/A') * 100 if info.get('returnOnEquity') else 'N/A',  # Convert to %
             "D/E": info.get('debtToEquity', 'N/A') / 100 if info.get('debtToEquity') else 'N/A',  # Convert % to ratio (e.g., 75.577 -> 0.756)

@@ -127,6 +127,12 @@ if top_results:
             "Positives": positives_str,
         })
     df = pd.DataFrame(df_data)
+
+    # Column picker
+    all_columns = df.columns.tolist()
+    selected_columns = st.multiselect("Select Columns to Display", all_columns, default=all_columns)
+    df = df[selected_columns]  # Filter to selected
+
     st.subheader("Ranked Top Stocks")
     st.dataframe(df, width='stretch', height=400, hide_index=False)  # Keeps index
 

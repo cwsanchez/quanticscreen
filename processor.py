@@ -125,8 +125,19 @@ def process_stock(metrics):
     # Final Score
     final_score = base_score * (1 + (boost_penalty / 100)) + factor_boost_total
 
-    # Positives/Risks (concise, tied to metrics/flags; rounded to 2 decimals, no flags in positives)
-    positives = f"Strong ROE ({round(roe, 2)}%) and FCF % EV ({round(fcf_ev, 2)}%) indicate efficiency."
+    # Positives/Risks (dynamic based on flags, rounded to 2 decimals, bullet points with \n- )
+    positives_parts = []
+    if "Undervalued" in flags:
+        positives_parts.append(f"Undervalued (low P/E {round(pe, 2)}, high ROE {round(roe, 2)}%)")
+    if "Strong Balance Sheet" in flags:
+        positives_parts.append(f"Strong balance (low D/E {round(de, 2)}, high cash)")
+    if "Quality Moat" in flags:
+        positives_parts.append(f"Quality moat (high margins {round(gross, 2)}%/{round(net, 2)}%, FCF/EV {round(fcf_ev, 2)}%)")
+    if "GARP" in flags:
+        positives_parts.append(f"GARP (PEG {round(peg, 2)}, moderate P/E)")
+    if "Momentum Building" in flags:
+        positives_parts.append(f"Momentum (price near high, EBITDA/EV {round(ebitda_ev, 2)}%)")
+    positives = "\n- ".join(positives_parts) if positives_parts else "Solid fundamentals based on metrics."
     risks = f"High D/E ({round(de, 2)}) may strain balance sheet. Watch debt ({round(debt, 2)})." if de > 2 or debt > mcap else "Low risks based on metrics."
 
     return {

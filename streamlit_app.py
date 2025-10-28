@@ -1,17 +1,17 @@
+# streamlit_app.py (updated: dynamic positives, exclude negative flags, show all option, disclaimer)
 import streamlit as st
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
 from processor import get_float
 import pandas as pd
 from seeder import seed
-import os
 import io  # For CSV export
-
+import os
 from dotenv import load_dotenv
-load_dotenv()  # Loads .env vars
 
+load_dotenv()
 st.set_page_config(layout="wide")  # Wider page
 
-# Password protection
+# Password protection from env
 PASSWORD = os.getenv("APP_PASSWORD")  # Env var name; set to your secret value
 entered_password = st.text_input("Enter password to access the app", type="password")
 if entered_password != PASSWORD:
@@ -29,6 +29,8 @@ with st.sidebar:
         selected_sector = st.selectbox("Select Sector", sectors)
     force_refresh = st.checkbox("Force Refresh (Re-fetch All)")
     num_top = st.slider("Top N Stocks", 1, 50, 20)
+    show_all = st.checkbox("Show All (Ignore Top N)")
+    exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)")
     if st.button("Seed Initial Data"):
         with st.spinner("Seeding data (this may take a while)..."):
             seed()
@@ -69,15 +71,34 @@ selected_flags = st.multiselect("Filter by Flags", unique_flags)
 if selected_flags:
     results = [r for r in results if any(flag in r['flags'] for flag in selected_flags)]
 
+# Exclude negative flags if checked
+negative_flags = {"Value Trap", "High-Risk Growth", "Debt Burden"}  # Define negatives
+if exclude_negative:
+    results = [r for r in results if not any(flag in negative_flags for flag in r['flags'])]
+
 # Rank by final_score desc
 results.sort(key=lambda x: x['final_score'], reverse=True)
-top_results = results[:num_top]
+top_results = results if show_all else results[:num_top]
+
+# Disclaimer for search
+if search and not top_results:
+    st.info("No matches found. Note: Results are ranked by score; low-scoring stocks may not appear unless 'Show All' is checked.")
 
 # Display ranked table using pandas (no risks, rounded)
 if top_results:
     df_data = []
     for res in top_results:
         m = res['metrics']
+        # Dynamic positives based on key strengths
+        positives = []
+        if "Undervalued" in res['flags']:
+            positives.append(f"Undervalued with P/E {round(m['P/E'], 2)} and ROE {round(m['ROE'], 2)}%")
+        if "Quality Moat" in res['flags']:
+            positives.append(f"Quality moat with margins {round(m['Gross Margin'], 2)}%/{round(m['Net Profit Margin'], 2)}%")
+        if "Strong Balance Sheet" in res['flags']:
+            positives.append(f"Strong balance with D/E {round(m['D/E'], 2)}")
+        positives_str = "; ".join(positives) if positives else "Solid fundamentals."
+        
         df_data.append({
             "Company (Ticker)": f"{m['Company Name']} ({m['Ticker']})",
             "Score": round(res['final_score'], 2),
@@ -89,7 +110,7 @@ if top_results:
             "FCF/EV %": round(m['FCF % EV TTM'], 2) if m['FCF % EV TTM'] != 'N/A' else 'N/A',
             "D/E": round(m['D/E'], 2) if m['D/E'] != 'N/A' else 'N/A',
             "Flags": ", ".join(res['flags']),
-            "Positives": res['positives'],
+            "Positives": positives_str,
         })
     df = pd.DataFrame(df_data)
     st.subheader("Ranked Top Stocks")

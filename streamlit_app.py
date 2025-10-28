@@ -84,6 +84,15 @@ top_results = results if show_all else results[:num_top]
 if search and not top_results:
     st.info("No matches found. Note: Results are ranked by score; low-scoring stocks may not appear unless 'Show All' is checked.")
 
+# Helper to format large numbers as B/M
+def format_large(val):
+    if val >= 1e9:
+        return f"{round(val / 1e9, 2)}B"
+    elif val >= 1e6:
+        return f"{round(val / 1e6, 2)}M"
+    else:
+        return round(val, 2)
+
 # Display ranked table using pandas (added new columns, combined 52W for space)
 if top_results:
     df_data = []
@@ -104,9 +113,9 @@ if top_results:
             "Score": round(res['final_score'], 2),
             "Price": round(get_float(m, 'Current Price'), 2),
             "52W High/Low": f"{round(get_float(m, '52W High'), 2)} / {round(get_float(m, '52W Low'), 2)}",
-            "EV": f"{round(get_float(m, 'EV') / 1e9, 2)}B" if get_float(m, 'EV') > 1e9 else round(get_float(m, 'EV'), 2),
-            "Total Cash": f"{round(get_float(m, 'Total Cash') / 1e9, 2)}B" if get_float(m, 'Total Cash') > 1e9 else round(get_float(m, 'Total Cash'), 2),
-            "Total Debt": f"{round(get_float(m, 'Total Debt') / 1e9, 2)}B" if get_float(m, 'Total Debt') > 1e9 else round(get_float(m, 'Total Debt'), 2),
+            "EV": format_large(get_float(m, 'EV')),
+            "Total Cash": format_large(get_float(m, 'Total Cash')),
+            "Total Debt": format_large(get_float(m, 'Total Debt')),
             "P/E": round(get_float(m, 'P/E'), 2),
             "ROE %": round(get_float(m, 'ROE'), 2),
             "P/B": round(get_float(m, 'P/B'), 2),

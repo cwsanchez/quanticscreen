@@ -1,9 +1,9 @@
-# db.py (refactored with SQLAlchemy)
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text
+# db.py (updated with caching query)
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.sqlite import insert
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 DB_NAME = 'stock_screen.db'
@@ -65,12 +65,53 @@ def init_db():
     """
     Base.metadata.create_all(engine)
 
-def get_value(metrics, key):
+def get_value_from_db(val):
     """
-    Helper to get float value or None if 'N/A'/missing.
+    Helper to convert DB value to 'N/A' if None.
     """
-    val = metrics.get(key, 'N/A')
-    return float(val) if val != 'N/A' else None
+    return val if val is not None else 'N/A'
+
+def get_latest_metrics(ticker):
+    """
+    Retrieves the latest metrics for a ticker if fetched <24 hours ago.
+    Returns reconstructed metrics dict (like from fetch_metrics) or None if no recent data.
+    """
+    session = Session()
+    latest_fetch = session.query(MetricFetch).filter_by(ticker=ticker).order_by(desc(MetricFetch.fetch_timestamp)).first()
+    session.close()
+
+    if not latest_fetch:
+        return None
+
+    fetch_time = datetime.fromisoformat(latest_fetch.fetch_timestamp)
+    if datetime.now() - fetch_time < timedelta(hours=24):
+        # Reconstruct metrics dict
+        stock = latest_fetch.stock  # Via relationship
+        metrics = {
+            'Ticker': ticker,
+            'Company Name': stock.company_name if stock else 'N/A',
+            'Industry': stock.industry if stock else 'N/A',
+            'P/E': get_value_from_db(latest_fetch.pe),
+            'ROE': get_value_from_db(latest_fetch.roe),
+            'D/E': get_value_from_db(latest_fetch.de),
+            'P/B': get_value_from_db(latest_fetch.pb),
+            'PEG': get_value_from_db(latest_fetch.peg),
+            'Gross Margin': get_value_from_db(latest_fetch.gross_margin),
+            'Net Profit Margin': get_value_from_db(latest_fetch.net_profit_margin),
+            'FCF % EV TTM': get_value_from_db(latest_fetch.fcf_ev),
+            'EBITDA % EV TTM': get_value_from_db(latest_fetch.ebitda_ev),
+            'Current Price': get_value_from_db(latest_fetch.current_price),
+            '52W High': get_value_from_db(latest_fetch.w52_high),
+            '52W Low': get_value_from_db(latest_fetch.w52_low),
+            'Market Cap': get_value_from_db(latest_fetch.market_cap),
+            'EV': get_value_from_db(latest_fetch.ev),
+            'Total Cash': get_value_from_db(latest_fetch.total_cash),
+            'Total Debt': get_value_from_db(latest_fetch.total_debt),
+            'FCF Actual': get_value_from_db(latest_fetch.fcf_actual),
+            'EBITDA Actual': get_value_from_db(latest_fetch.ebitda_actual)
+        }
+        return metrics
+    return None
 
 def save_metrics(metrics):
     """
@@ -97,24 +138,24 @@ def save_metrics(metrics):
     fetch = MetricFetch(
         ticker=ticker,
         fetch_timestamp=now,
-        pe=get_value(metrics, 'P/E'),
-        roe=get_value(metrics, 'ROE'),
-        de=get_value(metrics, 'D/E'),
-        pb=get_value(metrics, 'P/B'),
-        peg=get_value(metrics, 'PEG'),
-        gross_margin=get_value(metrics, 'Gross Margin'),
-        net_profit_margin=get_value(metrics, 'Net Profit Margin'),
-        fcf_ev=get_value(metrics, 'FCF % EV TTM'),
-        ebitda_ev=get_value(metrics, 'EBITDA % EV TTM'),
-        current_price=get_value(metrics, 'Current Price'),
-        w52_high=get_value(metrics, '52W High'),
-        w52_low=get_value(metrics, '52W Low'),
-        market_cap=get_value(metrics, 'Market Cap'),
-        ev=get_value(metrics, 'EV'),
-        total_cash=get_value(metrics, 'Total Cash'),
-        total_debt=get_value(metrics, 'Total Debt'),
-        fcf_actual=get_value(metrics, 'FCF Actual'),
-        ebitda_actual=get_value(metrics, 'EBITDA Actual')
+        pe=metrics.get('P/E') if metrics.get('P/E') != 'N/A' else None,
+        roe=metrics.get('ROE') if metrics.get('ROE') != 'N/A' else None,
+        de=metrics.get('D/E') if metrics.get('D/E') != 'N/A' else None,
+        pb=metrics.get('P/B') if metrics.get('P/B') != 'N/A' else None,
+        peg=metrics.get('PEG') if metrics.get('PEG') != 'N/A' else None,
+        gross_margin=metrics.get('Gross Margin') if metrics.get('Gross Margin') != 'N/A' else None,
+        net_profit_margin=metrics.get('Net Profit Margin') if metrics.get('Net Profit Margin') != 'N/A' else None,
+        fcf_ev=metrics.get('FCF % EV TTM') if metrics.get('FCF % EV TTM') != 'N/A' else None,
+        ebitda_ev=metrics.get('EBITDA % EV TTM') if metrics.get('EBITDA % EV TTM') != 'N/A' else None,
+        current_price=metrics.get('Current Price') if metrics.get('Current Price') != 'N/A' else None,
+        w52_high=metrics.get('52W High') if metrics.get('52W High') != 'N/A' else None,
+        w52_low=metrics.get('52W Low') if metrics.get('52W Low') != 'N/A' else None,
+        market_cap=metrics.get('Market Cap') if metrics.get('Market Cap') != 'N/A' else None,
+        ev=metrics.get('EV') if metrics.get('EV') != 'N/A' else None,
+        total_cash=metrics.get('Total Cash') if metrics.get('Total Cash') != 'N/A' else None,
+        total_debt=metrics.get('Total Debt') if metrics.get('Total Debt') != 'N/A' else None,
+        fcf_actual=metrics.get('FCF Actual') if metrics.get('FCF Actual') != 'N/A' else None,
+        ebitda_actual=metrics.get('EBITDA Actual') if metrics.get('EBITDA Actual') != 'N/A' else None
     )
     session.add(fetch)
     session.commit()

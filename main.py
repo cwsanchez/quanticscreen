@@ -1,7 +1,8 @@
+# main.py (updated to use caching)
 import argparse
 from fetcher import fetch_metrics
 from processor import process_stock, get_float
-from db import init_db, save_metrics, save_processed  # New imports for DB
+from db import init_db, get_latest_metrics, save_metrics, save_processed  # Updated imports
 
 def main():
     init_db()  # Initialize DB at start
@@ -14,15 +15,21 @@ def main():
     preset_tickers = ['UNH', 'NVO', 'AAPL', 'MSFT', 'GOOGL']
     tickers = args.tickers.split(',') if args.tickers else preset_tickers
 
-    # Step 1: Gather data
+    # Step 1: Gather data with caching
     results = []
     for ticker in tickers:
-        metrics = fetch_metrics(ticker)
-        if metrics:
-            fetch_id = save_metrics(metrics)  # Save raw metrics to DB
-            processed = process_stock(metrics)
-            save_processed(processed, fetch_id)  # Save processed to DB
-            results.append(processed)
+        metrics = get_latest_metrics(ticker)  # Check cache first
+        if not metrics:
+            metrics = fetch_metrics(ticker)  # Fetch fresh if no recent cache
+            if metrics:
+                fetch_id = save_metrics(metrics)
+                processed = process_stock(metrics)
+                save_processed(processed, fetch_id)
+                results.append(processed)
+            continue
+        # If cached or fetched, process (re-processing is cheap/deterministic)
+        processed = process_stock(metrics)
+        results.append(processed)
 
     # Rank by final_score desc
     results.sort(key=lambda x: x['final_score'], reverse=True)

@@ -29,10 +29,12 @@ python main.py --tickers=TSLA,AMZN,NVDA
 Outputs markdown report (ranked table, sub-lists, warnings) to console.
 
 ### Streamlit UI Mode
-Run: `streamlit run streamlit_app.py`
+Run locally: `streamlit run streamlit_app.py`
 - Sidebar: Select dataset (All, Large/Mid/Small Cap, Value/Growth, Sector), force refresh, top N.
 - Features: Seed data button, ticker/company search, flag multiselect filter, interactive table (sortable, scrollable metrics columns), factor expanders, warnings, CSV export.
 - Pages: Main screening + Explanation (detailed logic breakdown).
+
+Access the live app at [https://quanticscreen.streamlit.app/](https://quanticscreen.streamlit.app/).
 
 ### Seeding Data
 Seed ~700 tickers (S&P 500 + partial Russell 2000) via UI button or `python seeder.py`. Uses caching to avoid redundant Yahoo calls.

@@ -1,4 +1,3 @@
-# streamlit_app.py (updated: dynamic positives, exclude negative flags, show all option, disclaimer)
 import streamlit as st
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
 from processor import get_float
@@ -89,26 +88,26 @@ if top_results:
     df_data = []
     for res in top_results:
         m = res['metrics']
-        # Dynamic positives based on key strengths
+        # Dynamic positives based on key strengths (handle N/A with get_float)
         positives = []
         if "Undervalued" in res['flags']:
-            positives.append(f"Undervalued with P/E {round(m['P/E'], 2)} and ROE {round(m['ROE'], 2)}%")
+            positives.append(f"Undervalued with P/E {round(get_float(m, 'P/E'), 2)} and ROE {round(get_float(m, 'ROE'), 2)}%")
         if "Quality Moat" in res['flags']:
-            positives.append(f"Quality moat with margins {round(m['Gross Margin'], 2)}%/{round(m['Net Profit Margin'], 2)}%")
+            positives.append(f"Quality moat with margins {round(get_float(m, 'Gross Margin'), 2)}%/{round(get_float(m, 'Net Profit Margin'), 2)}%")
         if "Strong Balance Sheet" in res['flags']:
-            positives.append(f"Strong balance with D/E {round(m['D/E'], 2)}")
+            positives.append(f"Strong balance with D/E {round(get_float(m, 'D/E'), 2)}")
         positives_str = "; ".join(positives) if positives else "Solid fundamentals."
         
         df_data.append({
             "Company (Ticker)": f"{m['Company Name']} ({m['Ticker']})",
             "Score": round(res['final_score'], 2),
-            "P/E": round(m['P/E'], 2) if m['P/E'] != 'N/A' else 'N/A',
-            "ROE %": round(m['ROE'], 2) if m['ROE'] != 'N/A' else 'N/A',
-            "P/B": round(m['P/B'], 2) if m['P/B'] != 'N/A' else 'N/A',
-            "PEG": round(m['PEG'], 2) if m['PEG'] != 'N/A' else 'N/A',
-            "Gross Margin %": round(m['Gross Margin'], 2) if m['Gross Margin'] != 'N/A' else 'N/A',
-            "FCF/EV %": round(m['FCF % EV TTM'], 2) if m['FCF % EV TTM'] != 'N/A' else 'N/A',
-            "D/E": round(m['D/E'], 2) if m['D/E'] != 'N/A' else 'N/A',
+            "P/E": round(get_float(m, 'P/E'), 2) if m['P/E'] != 'N/A' else 'N/A',
+            "ROE %": round(get_float(m, 'ROE'), 2) if m['ROE'] != 'N/A' else 'N/A',
+            "P/B": round(get_float(m, 'P/B'), 2) if m['P/B'] != 'N/A' else 'N/A',
+            "PEG": round(get_float(m, 'PEG'), 2) if m['PEG'] != 'N/A' else 'N/A',
+            "Gross Margin %": round(get_float(m, 'Gross Margin'), 2) if m['Gross Margin'] != 'N/A' else 'N/A',
+            "FCF/EV %": round(get_float(m, 'FCF % EV TTM'), 2) if m['FCF % EV TTM'] != 'N/A' else 'N/A',
+            "D/E": round(get_float(m, 'D/E'), 2) if m['D/E'] != 'N/A' else 'N/A',
             "Flags": ", ".join(res['flags']),
             "Positives": positives_str,
         })
@@ -130,7 +129,7 @@ if top_results:
             for res in top_factor:
                 if res['factor_boosts'][factor] > 0:
                     m = res['metrics']
-                    reason = f"High score due to relevant metrics (e.g., ROE: {round(m['ROE'], 2)}%, Flags: {', '.join(res['flags'])})."
+                    reason = f"High score due to relevant metrics (e.g., ROE: {round(get_float(m, 'ROE'), 2)}%, Flags: {', '.join(res['flags'])})."
                     st.markdown(f"- {m['Company Name']} ({m['Ticker']}): {reason}")
 
     # Warnings

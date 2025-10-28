@@ -1,6 +1,7 @@
 # requirements.txt
 requests
 python-dotenv
+streamlit
 yfinance
 sqlaclhemy
 pandas  # Uncomment if added

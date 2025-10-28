@@ -1,7 +1,6 @@
 # requirements.txt
 requests
 python-dotenv
-xai-sdk
-openai
 yfinance
+sqlaclhemy
 pandas  # Uncomment if added

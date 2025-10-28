@@ -1,9 +1,11 @@
-# main.py
 import argparse
 from fetcher import fetch_metrics
 from processor import process_stock, get_float
+from db import init_db, save_metrics, save_processed  # New imports for DB
 
 def main():
+    init_db()  # Initialize DB at start
+
     parser = argparse.ArgumentParser(description="StockSimTool CLI")
     parser.add_argument('--tickers', type=str, help="Comma-separated tickers (overrides preset)")
     args = parser.parse_args()
@@ -17,7 +19,9 @@ def main():
     for ticker in tickers:
         metrics = fetch_metrics(ticker)
         if metrics:
+            fetch_id = save_metrics(metrics)  # Save raw metrics to DB
             processed = process_stock(metrics)
+            save_processed(processed, fetch_id)  # Save processed to DB
             results.append(processed)
 
     # Rank by final_score desc

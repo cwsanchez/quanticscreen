@@ -50,6 +50,10 @@ if st.button("Save Config"):
 
 # JSON Export/Import
 st.subheader("Export/Import Config")
+try:
+    logic = json.loads(logic_json)
+except json.JSONDecodeError:
+    logic = {}
 config_data = {'weights': weights, 'metrics': selected_metrics, 'logic': logic}
 st.download_button("Export JSON", data=json.dumps(config_data), file_name=f"{config_name}.json", mime="application/json")
 

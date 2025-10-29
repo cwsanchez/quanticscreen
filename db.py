@@ -50,7 +50,7 @@ class ProcessedResult(Base):
     __tablename__ = 'ProcessedResults'
     result_id = Column(Integer, primary_key=True, autoincrement=True)
     fetch_id = Column(Integer, ForeignKey('MetricFetches.fetch_id'))
-    config_id = Column(Integer, ForeignKey('ProcessorConfigs.config_id'))  # Link to config used
+    config_id = Column(Integer, ForeignKey('ProcessorConfigs.config_id'), nullable=True)  # Link to config used, nullable for migration
     base_score = Column(Float)
     final_score = Column(Float)
     flags = Column(Text)  # JSON string
@@ -95,6 +95,9 @@ def init_db():
         logic=json.dumps(default_logic)
     ).on_conflict_do_nothing(index_elements=['name'])
     session.execute(stmt)
+    # Migration for existing ProcessedResult to set default config_id=1 (assuming default is id 1)
+    default_config_id = session.query(ProcessorConfig).filter_by(name='default').first().config_id
+    session.query(ProcessedResult).filter(ProcessedResult.config_id.is_(None)).update({ProcessedResult.config_id: default_config_id})
     session.commit()
     session.close()
 

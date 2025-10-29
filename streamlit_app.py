@@ -1,6 +1,7 @@
 import streamlit as st
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
 from processor import get_float
+from tickers import DEFAULT_TICKERS  # Import for validation
 import pandas as pd
 import numpy as np  # For np.nan
 from seeder import seed
@@ -68,7 +69,7 @@ with st.sidebar:
 tickers = get_all_tickers()
 results = []
 for ticker in tickers:
-    processed = get_latest_processed(ticker)
+    processed = get_latest_processed(ticker, config_id=1)  # Assuming default config_id=1
     if processed:
         results.append(processed)
 

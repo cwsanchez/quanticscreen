@@ -1,6 +1,6 @@
 from fetcher import fetch_metrics
 from processor import process_stock
-from db import get_latest_metrics, save_metrics, save_processed
+from db import get_latest_metrics, save_metrics, save_processed, Session, ProcessorConfig
 from datetime import datetime, timedelta
 
 # Manageable lists: S&P 500 (~500 large cap) and partial Russell 2000 (~200 small cap) for total ~700
@@ -19,6 +19,12 @@ def seed():
     Only re-fetches if cache >72h old or no data.
     """
     all_tickers = list(set(large_cap_tickers + small_cap_tickers))  # Dedup
+
+    session = Session()
+    config = session.query(ProcessorConfig).filter_by(name='default').first()
+    config_id = config.config_id if config else 1
+    session.close()
+
     for batch in batches(all_tickers, 50):
         for ticker in batch:
             metrics = get_latest_metrics(ticker)
@@ -27,8 +33,8 @@ def seed():
                 metrics = fetch_metrics(ticker)
                 if metrics:
                     fetch_id = save_metrics(metrics)
-                    processed = process_stock(metrics)
-                    save_processed(processed, fetch_id)
+                    processed = process_stock(metrics, config_name='default')
+                    save_processed(processed, fetch_id, config_id)
                 # Note: This simplifies the logic by trusting db.py to manage cache validity, fixing KeyError when 'fetch_timestamp' was missing in metrics dict
 
 if __name__ == "__main__":

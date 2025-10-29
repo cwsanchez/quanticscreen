@@ -4,7 +4,19 @@ import json
 
 st.title("Customize Processor Logic")
 
-# Load default or existing config
+# Default logic for restrictions (hardcoded to match db defaults)
+DEFAULT_LOGIC = {
+    'Undervalued': {'enabled': True, 'boost': 15},
+    'Strong Balance Sheet': {'enabled': True, 'boost': 10},
+    'Quality Moat': {'enabled': True, 'boost': 15},
+    'GARP': {'enabled': True, 'boost': 10},
+    'High-Risk Growth': {'enabled': True, 'boost': -10},
+    'Value Trap': {'enabled': True, 'boost': -10},
+    'Momentum Building': {'enabled': True, 'boost': 5},
+    'Debt Burden': {'enabled': True, 'boost': -15}
+}
+
+# Load config
 config_name = st.text_input("Config Name (e.g., 'default' to edit existing)", value="default")
 if st.button("Load Config"):
     config = get_processor_config(config_name)
@@ -21,39 +33,47 @@ if st.button("Load Config"):
             'EBITDA % EV TTM': 0.075, 'Balance': 0.05
         }
         st.session_state.metrics = list(st.session_state.weights.keys())
-        st.session_state.logic = {}  # Placeholder for custom logic
+        st.session_state.logic = DEFAULT_LOGIC.copy()
 
-# Weights Editor
-st.subheader("Edit Weights (must sum to 1)")
+# Metrics Selector
+st.subheader("Select Metrics to Include")
+available_metrics = ['P/E', 'ROE', 'D/E', 'P/B', 'PEG', 'Gross Margin', 'Net Profit Margin', 'FCF % EV TTM', 'EBITDA % EV TTM', 'Balance']
+selected_metrics = st.multiselect("Metrics", available_metrics, default=st.session_state.get('metrics', available_metrics))
+st.session_state.metrics = selected_metrics
+
+# Weights Editor (only for selected, restrict 0-0.3)
+st.subheader("Edit Weights (0.0 - 0.3; should sum to ~1 for selected)")
 weights = st.session_state.get('weights', {})
-for metric in weights:
-    weights[metric] = st.slider(f"{metric} Weight", 0.0, 1.0, weights[metric], 0.01)
-if sum(weights.values()) != 1.0:
-    st.warning("Weights should sum to 1.0 for accurate scoring.")
+for metric in selected_metrics:
+    if metric not in weights:
+        weights[metric] = 0.1  # Default if new
+    weights[metric] = st.slider(f"{metric} Weight", 0.0, 0.3, weights[metric], 0.01)
+total_weight = sum(weights.get(m, 0) for m in selected_metrics)
+if total_weight > 1.0 or total_weight < 0.9:
+    st.warning(f"Weights sum to {total_weight:.2f}; ideally ~1.0 for accurate scoring.")
 
-# Metrics Selector (only existing for now)
-st.subheader("Select Metrics")
-available_metrics = ['P/E', 'ROE', 'D/E', 'P/B', 'PEG', 'Gross Margin', 'Net Profit Margin', 'FCF % EV TTM', 'EBITDA % EV TTM', 'Balance']  # Hard-coded existing
-selected_metrics = st.multiselect("Metrics to Include", available_metrics, default=st.session_state.get('metrics', available_metrics))
+# Logic Editor
+st.subheader("Customize Logic Flags")
+logic = st.session_state.get('logic', DEFAULT_LOGIC.copy())
+for flag, data in DEFAULT_LOGIC.items():
+    default_boost = data['boost']
+    min_boost = default_boost - 10
+    max_boost = default_boost + 10
+    col1, col2 = st.columns(2)
+    with col1:
+        enabled = st.checkbox(f"Enable {flag}", value=logic.get(flag, {}).get('enabled', True))
+    with col2:
+        boost = st.slider(f"{flag} Boost", min_boost, max_boost, logic.get(flag, {}).get('boost', default_boost), 1)
+    logic[flag] = {'enabled': enabled, 'boost': boost}
+st.session_state.logic = logic
 
-# Logic Editor (advanced, as JSON for thresholds/flags)
-st.subheader("Custom Logic (JSON)")
-logic_json = st.text_area("Edit Logic JSON", value=json.dumps(st.session_state.get('logic', {}), indent=2))
-
+# Save
 if st.button("Save Config"):
-    try:
-        logic = json.loads(logic_json)
-        save_processor_config(config_name, weights, selected_metrics, logic)
-        st.success(f"Saved config '{config_name}'")
-    except json.JSONDecodeError:
-        st.error("Invalid JSON in logic.")
+    save_processor_config(config_name, weights, selected_metrics, logic)
+    st.success(f"Saved config '{config_name}'")
 
 # JSON Export/Import
 st.subheader("Export/Import Config")
-try:
-    logic = json.loads(logic_json)
-except json.JSONDecodeError:
-    logic = {}
 config_data = {'weights': weights, 'metrics': selected_metrics, 'logic': logic}
 st.download_button("Export JSON", data=json.dumps(config_data), file_name=f"{config_name}.json", mime="application/json")
 

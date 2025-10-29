@@ -1,3 +1,5 @@
+from db import get_processor_config
+
 def get_float(metrics, key):
     """
     Helper to get float value from metrics dict or 0 if N/A/missing.
@@ -5,7 +7,14 @@ def get_float(metrics, key):
     val = metrics.get(key, 'N/A')
     return float(val) if val != 'N/A' else 0.0
 
-def process_stock(metrics):
+def format_large(val):
+    if val >= 1e9:
+        return f"{round(val / 1e9, 2)}B"
+    elif val >= 1e6:
+        return f"{round(val / 1e6, 2)}M"
+    else:
+        return f"{round(val, 2)}"
+def process_stock(metrics, config_name='default'):
     """
     Processes a single stock's metrics per algorithm steps 2-5.
     Returns dict with: base_score, final_score, flags (list), positives (str), risks (str), factor_boosts (dict for value/momentum/etc.).
@@ -29,85 +38,85 @@ def process_stock(metrics):
     low = get_float(metrics, '52W Low')
     debt = get_float(metrics, 'Total Debt')
 
+    # Load config
+    config = get_processor_config(config_name)
+    if not config:
+        raise ValueError(f"Config '{config_name}' not found")
+
+    selected_metrics = config['metrics']
+    weights = config['weights']
+
+    # Normalize weights if sum != 1 for selected metrics
+    total_weight = sum(weights.get(m, 0) for m in selected_metrics)
+    if total_weight == 0:
+        total_weight = 1  # Avoid division by zero
+    normalized_weights = {m: weights.get(m, 0) / total_weight for m in selected_metrics}
+
     # Step 2: Individual Metric Scoring (0-10)
     # (Comments on single-metric thresholds omitted as per user: only multi-metric correlations need explanation)
-    pe_score = 10 if pe < 15 else 7 if pe < 20 else 5 if pe < 30 else 2 if pe < 40 else 0
-
-    roe_score = 10 if roe > 15 else 7 if roe >= 10 else 5 if roe >= 5 else 0
-
-    de_score = 10 if de < 1 else 7 if de < 1.5 else 5 if de < 2 else 0
-
-    pb_score = 10 if pb < 1.5 else 7 if pb < 2.5 else 5 if pb < 4 else 0
-
-    peg_score = 10 if peg < 1 else 7 if peg < 1.5 else 5 if peg < 2 else 0
-
-    gross_score = 10 if gross > 40 else 7 if gross >= 30 else 5 if gross >= 20 else 0
-
-    net_score = 10 if net > 15 else 7 if net >= 10 else 5 if net >= 5 else 0
-
-    fcf_ev_score = 10 if fcf_ev > 5 else 7 if fcf_ev >= 3 else 5 if fcf_ev >= 1 else 0
-
-    ebitda_ev_score = 10 if ebitda_ev > 10 else 7 if ebitda_ev >= 5 else 5 if ebitda_ev >= 2 else 0
-
-    # Balance score
-    balance_score = 10 if (cash > 0.2 * mcap) or (price > 0.8 * high) else 0 if (debt > mcap) or (price < 1.1 * low) else 5
+    metric_scores = {}
+    if 'P/E' in selected_metrics:
+        metric_scores['P/E'] = 10 if pe < 15 else 7 if pe < 20 else 5 if pe < 30 else 2 if pe < 40 else 0
+    if 'ROE' in selected_metrics:
+        metric_scores['ROE'] = 10 if roe > 15 else 7 if roe >= 10 else 5 if roe >= 5 else 0
+    if 'D/E' in selected_metrics:
+        metric_scores['D/E'] = 10 if de < 1 else 7 if de < 1.5 else 5 if de < 2 else 0
+    if 'P/B' in selected_metrics:
+        metric_scores['P/B'] = 10 if pb < 1.5 else 7 if pb < 2.5 else 5 if pb < 4 else 0
+    if 'PEG' in selected_metrics:
+        metric_scores['PEG'] = 10 if peg < 1 else 7 if peg < 1.5 else 5 if peg < 2 else 0
+    if 'Gross Margin' in selected_metrics:
+        metric_scores['Gross Margin'] = 10 if gross > 40 else 7 if gross >= 30 else 5 if gross >= 20 else 0
+    if 'Net Profit Margin' in selected_metrics:
+        metric_scores['Net Profit Margin'] = 10 if net > 15 else 7 if net >= 10 else 5 if net >= 5 else 0
+    if 'FCF % EV TTM' in selected_metrics:
+        metric_scores['FCF % EV TTM'] = 10 if fcf_ev > 5 else 7 if fcf_ev >= 3 else 5 if fcf_ev >= 1 else 0
+    if 'EBITDA % EV TTM' in selected_metrics:
+        metric_scores['EBITDA % EV TTM'] = 10 if ebitda_ev > 10 else 7 if ebitda_ev >= 5 else 5 if ebitda_ev >= 2 else 0
+    if 'Balance' in selected_metrics:
+        metric_scores['Balance'] = 10 if (cash > 0.2 * mcap) or (price > 0.8 * high) else 0 if (debt > mcap) or (price < 1.1 * low) else 5
 
     # Step 3: Weighting & Base Score (0-100)
-    weights = {
-        'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
-        'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
-        'EBITDA % EV TTM': 0.075, 'Balance': 0.05
-    }
-    base_score = (
-        pe_score * weights['P/E'] + roe_score * weights['ROE'] + de_score * weights['D/E'] +
-        pb_score * weights['P/B'] + peg_score * weights['PEG'] + gross_score * weights['Gross Margin'] +
-        net_score * weights['Net Profit Margin'] + fcf_ev_score * weights['FCF % EV TTM'] +
-        ebitda_ev_score * weights['EBITDA % EV TTM'] + balance_score * weights['Balance']
-    ) * 10  # Scale to 0-100
+    base_score = sum(metric_scores.get(m, 0) * normalized_weights.get(m, 0) for m in selected_metrics) * 10  # Scale to 0-100
 
     # Step 4: Correlations & Flags (Boost/Penalty %)
     flags = []
     boost_penalty = 0.0
 
-    # Indicates undervalued companies with strong profitability/efficiency.
-    if pe < 15 and roe > 15:
-        boost_penalty += 15
-        flags.append("Undervalued")
+    logic = config['logic']
+    for flag, data in logic.items():
+        if not data.get('enabled', False):
+            continue
+        boost = data.get('boost', 0)
+        condition_met = False
+        if flag == "Undervalued":
+            # Indicates undervalued companies with strong profitability/efficiency.
+            condition_met = pe < 15 and roe > 15
+        elif flag == "Strong Balance Sheet":
+            # Indicates strong balance sheet with low leverage/liquidity buffer.
+            condition_met = de < 1 and cash > 0.1 * mcap
+        elif flag == "Quality Moat":
+            # Indicates quality moat with sustainable profitability/cash generation.
+            condition_met = gross > 40 and net > 15 and fcf_ev > 5
+        elif flag == "GARP":
+            # Indicates growth at reasonable price (GARP).
+            condition_met = peg < 1 and 15 <= pe <= 25
+        elif flag == "High-Risk Growth":
+            # Indicates high-risk growth potential.
+            condition_met = pe > 30 and peg < 0.8
+        elif flag == "Value Trap":
+            # Indicates potential value trap (cheap but poor returns).
+            condition_met = pb < 1.5 and roe < 5
+        elif flag == "Momentum Building":
+            # Indicates positive momentum with operational strength.
+            condition_met = price > 0.9 * high and ebitda_ev > 10
+        elif flag == "Debt Burden":
+            # Indicates debt burden with strained cash flow.
+            condition_met = de > 2 and fcf_ev < 3
 
-    # Indicates strong balance sheet with low leverage/liquidity buffer.
-    if de < 1 and cash > 0.1 * mcap:
-        boost_penalty += 10
-        flags.append("Strong Balance Sheet")
-
-    # Indicates quality moat with sustainable profitability/cash generation.
-    if gross > 40 and net > 15 and fcf_ev > 5:
-        boost_penalty += 15
-        flags.append("Quality Moat")
-
-    # Indicates growth at reasonable price (GARP).
-    if peg < 1 and 15 <= pe <= 25:
-        boost_penalty += 10
-        flags.append("GARP")
-
-    # Indicates high-risk growth potential.
-    if pe > 30 and peg < 0.8:
-        boost_penalty -= 10
-        flags.append("High-Risk Growth")
-
-    # Indicates potential value trap (cheap but poor returns).
-    if pb < 1.5 and roe < 5:
-        boost_penalty -= 10
-        flags.append("Value Trap")
-
-    # Indicates positive momentum with operational strength.
-    if price > 0.9 * high and ebitda_ev > 10:
-        boost_penalty += 5
-        flags.append("Momentum Building")
-
-    # Indicates debt burden with strained cash flow.
-    if de > 2 and fcf_ev < 3:
-        boost_penalty -= 15
-        flags.append("Debt Burden")
+        if condition_met:
+            flags.append(flag)
+            boost_penalty += boost
 
     # Step 5: Factor Lens (Extra Boosts, sub-rankings in main.py)
     factor_boosts = {

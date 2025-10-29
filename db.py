@@ -96,7 +96,16 @@ def init_db():
         'EBITDA % EV TTM': 0.075, 'Balance': 0.05
     }
     default_metrics = list(default_weights.keys())
-    default_logic = {}  # Placeholder; expand if needed for custom thresholds/flags
+    default_logic = {
+        'Undervalued': {'enabled': True, 'boost': 15},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 10},
+        'Quality Moat': {'enabled': True, 'boost': 15},
+        'GARP': {'enabled': True, 'boost': 10},
+        'High-Risk Growth': {'enabled': True, 'boost': -10},
+        'Value Trap': {'enabled': True, 'boost': -10},
+        'Momentum Building': {'enabled': True, 'boost': 5},
+        'Debt Burden': {'enabled': True, 'boost': -15}
+    }  # Default correlations/flags/boosts
     stmt = insert(ProcessorConfig).values(
         name='default',
         weights=json.dumps(default_weights),

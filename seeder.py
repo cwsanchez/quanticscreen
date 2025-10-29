@@ -1,6 +1,6 @@
 from fetcher import fetch_metrics
 from processor import process_stock
-from db import get_latest_metrics, save_metrics, save_processed, Session, ProcessorConfig
+from db import get_latest_metrics, save_metrics, save_processed, Session, ProcessorConfig, init_db
 from datetime import datetime, timedelta
 
 # Manageable lists: S&P 500 (~500 large cap) and partial Russell 2000 (~200 small cap) for total ~700
@@ -18,6 +18,8 @@ def seed():
     Seeds the DB with a manageable set of tickers from major indices in batches of 50.
     Only re-fetches if cache >72h old or no data.
     """
+    init_db()
+
     all_tickers = list(set(large_cap_tickers + small_cap_tickers))  # Dedup
 
     session = Session()

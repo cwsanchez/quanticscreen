@@ -1,6 +1,6 @@
 import streamlit as st
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed, Session, ProcessorConfig
-from processor import get_float
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics
+from processor import get_float, process_stock, DEFAULT_LOGIC
 from tickers import DEFAULT_TICKERS  # Import for validation
 import pandas as pd
 import numpy as np  # For np.nan
@@ -39,10 +39,23 @@ with st.sidebar:
         sectors = get_unique_sectors()
         selected_sector = st.selectbox("Select Sector", sectors)
 
-    session = Session()
-    config_names = [c.name for c in session.query(ProcessorConfig).all()]
-    session.close()
-    config_name = st.selectbox('Select Config', config_names, index=config_names.index('default') if 'default' in config_names else 0)
+    # Initialize configs in session state
+    if 'configs' not in st.session_state:
+        default_weights = {
+            'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
+            'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
+            'EBITDA % EV TTM': 0.075, 'Balance': 0.05
+        }
+        default_metrics = list(default_weights.keys())
+        st.session_state.configs = {
+            'default': {
+                'weights': default_weights,
+                'metrics': default_metrics,
+                'logic': DEFAULT_LOGIC
+            }
+        }
+
+    config_name = st.selectbox('Select Config', list(st.session_state.configs.keys()))
 
     force_refresh = st.checkbox("Force Refresh (Re-fetch All)")
     num_top = st.slider("Top N Stocks", 1, 50, 20)
@@ -71,18 +84,14 @@ with st.sidebar:
         else:
             st.error("Provide a name and tickers.")
 
-# Get config_id from config_name
-session = Session()
-config = session.query(ProcessorConfig).filter_by(name=config_name).first()
-config_id = config.config_id if config else 1
-session.close()
-
-# Get all tickers and load latest processed
+# Get all tickers and process on the fly
 tickers = get_all_tickers()
 results = []
 for ticker in tickers:
-    processed = get_latest_processed(ticker, config_id=config_id)
-    if processed:
+    metrics = get_latest_metrics(ticker)
+    if metrics:
+        config = st.session_state.configs[config_name]
+        processed = process_stock(metrics, config_dict=config)
         results.append(processed)
 
 # Apply filters based on dataset

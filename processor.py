@@ -1,5 +1,3 @@
-from db import get_processor_config
-
 def get_float(metrics, key):
     """
     Helper to get float value from metrics dict or 0 if N/A/missing.
@@ -26,7 +24,18 @@ CONDITIONS = {
     'Debt Burden': lambda m: get_float(m, 'D/E') > 2 and get_float(m, 'FCF % EV TTM') < 1
 }
 
-def process_stock(metrics, config_name='default'):
+DEFAULT_LOGIC = {
+    'Undervalued': {'enabled': True, 'boost': 15},
+    'Strong Balance Sheet': {'enabled': True, 'boost': 10},
+    'Quality Moat': {'enabled': True, 'boost': 15},
+    'GARP': {'enabled': True, 'boost': 10},
+    'High-Risk Growth': {'enabled': True, 'boost': -10},
+    'Value Trap': {'enabled': True, 'boost': -10},
+    'Momentum Building': {'enabled': True, 'boost': 5},
+    'Debt Burden': {'enabled': True, 'boost': -15}
+}
+
+def process_stock(metrics, config_dict=None):
     """
     Processes a single stock's metrics per algorithm steps 2-5.
     Returns dict with: base_score, final_score, flags (list), positives (str), risks (str), factor_boosts (dict for value/momentum/etc.).
@@ -50,30 +59,19 @@ def process_stock(metrics, config_name='default'):
     low = get_float(metrics, '52W Low')
     debt = get_float(metrics, 'Total Debt')
 
-    # Load config
-    config = get_processor_config(config_name)
-    if not config:
-        # Use hardcoded defaults
+    # Load config or defaults
+    if config_dict is None:
         weights = {
             'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
             'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
             'EBITDA % EV TTM': 0.075, 'Balance': 0.05
         }
         selected_metrics = list(weights.keys())
-        logic = {
-            'Undervalued': {'enabled': True, 'boost': 15},
-            'Strong Balance Sheet': {'enabled': True, 'boost': 10},
-            'Quality Moat': {'enabled': True, 'boost': 15},
-            'GARP': {'enabled': True, 'boost': 10},
-            'High-Risk Growth': {'enabled': True, 'boost': -10},
-            'Value Trap': {'enabled': True, 'boost': -10},
-            'Momentum Building': {'enabled': True, 'boost': 5},
-            'Debt Burden': {'enabled': True, 'boost': -15}
-        }
+        logic = DEFAULT_LOGIC
     else:
-        selected_metrics = config['metrics']
-        weights = config['weights']
-        logic = config['logic']
+        weights = config_dict['weights']
+        selected_metrics = config_dict['metrics']
+        logic = config_dict['logic']
 
     # Normalize weights for selected only
     sum_w = sum(weights.get(m, 0) for m in selected_metrics)

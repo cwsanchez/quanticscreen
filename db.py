@@ -76,6 +76,15 @@ def init_db():
     Initializes the database by creating tables if they don't exist.
     """
     Base.metadata.create_all(engine)
+    
+    # Migration for config_id column in ProcessedResults
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    if 'ProcessedResults' in inspector.get_table_names():
+        columns = [col['name'] for col in inspector.get_columns('ProcessedResults')]
+        if 'config_id' not in columns:
+            engine.execute('ALTER TABLE "ProcessedResults" ADD COLUMN config_id INTEGER REFERENCES "ProcessorConfigs" (config_id)')
+    
     # Migration: Set old default timestamp for any records missing fetch_timestamp to force re-fetch on next seed
     session = Session()
     old_date = datetime(2000, 1, 1).isoformat()

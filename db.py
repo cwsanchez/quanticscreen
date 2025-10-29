@@ -50,6 +50,7 @@ class ProcessedResult(Base):
     __tablename__ = 'ProcessedResults'
     result_id = Column(Integer, primary_key=True, autoincrement=True)
     fetch_id = Column(Integer, ForeignKey('MetricFetches.fetch_id'))
+    config_id = Column(Integer, ForeignKey('ProcessorConfigs.config_id'))  # Link to config used
     base_score = Column(Float)
     final_score = Column(Float)
     flags = Column(Text)  # JSON string
@@ -58,6 +59,17 @@ class ProcessedResult(Base):
     factor_boosts = Column(Text)  # JSON string
 
     metric_fetch = relationship("MetricFetch", back_populates="processed_results")
+    config = relationship("ProcessorConfig", back_populates="processed_results")
+
+class ProcessorConfig(Base):
+    __tablename__ = 'ProcessorConfigs'
+    config_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, unique=True)
+    weights = Column(Text)  # JSON string of weights dict
+    metrics = Column(Text)  # JSON list of selected metrics
+    logic = Column(Text)  # JSON for custom logic (e.g., thresholds, correlations)
+
+    processed_results = relationship("ProcessedResult", back_populates="config")
 
 def init_db():
     """
@@ -68,6 +80,21 @@ def init_db():
     session = Session()
     old_date = datetime(2000, 1, 1).isoformat()
     session.query(MetricFetch).filter(MetricFetch.fetch_timestamp.is_(None)).update({MetricFetch.fetch_timestamp: old_date})
+    # Seed default config from processor.py weights
+    default_weights = {
+        'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
+        'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
+        'EBITDA % EV TTM': 0.075, 'Balance': 0.05
+    }
+    default_metrics = list(default_weights.keys())
+    default_logic = {}  # Placeholder; expand if needed for custom thresholds/flags
+    stmt = insert(ProcessorConfig).values(
+        name='default',
+        weights=json.dumps(default_weights),
+        metrics=json.dumps(default_metrics),
+        logic=json.dumps(default_logic)
+    ).on_conflict_do_nothing(index_elements=['name'])
+    session.execute(stmt)
     session.commit()
     session.close()
 
@@ -122,15 +149,19 @@ def get_latest_metrics(ticker):
         return metrics
     return None
 
-def get_latest_processed(ticker):
+def get_latest_processed(ticker, config_id=None):
     """
-    Retrieves the latest processed results for a ticker, linked to the latest fetch.
+    Retrieves the latest processed results for a ticker, optionally for a specific config.
     Returns processed dict or None if not available.
     """
     session = Session()
-    latest_fetch = session.query(MetricFetch).filter_by(ticker=ticker).order_by(desc(MetricFetch.fetch_timestamp)).first()
+    query = session.query(MetricFetch).filter_by(ticker=ticker).order_by(desc(MetricFetch.fetch_timestamp))
+    latest_fetch = query.first()
     if latest_fetch:
-        pr = session.query(ProcessedResult).filter_by(fetch_id=latest_fetch.fetch_id).first()
+        pr_query = session.query(ProcessedResult).filter_by(fetch_id=latest_fetch.fetch_id)
+        if config_id:
+            pr_query = pr_query.filter_by(config_id=config_id)
+        pr = pr_query.first()
         if pr:
             flags = json.loads(pr.flags)
             factor_boosts = json.loads(pr.factor_boosts)
@@ -147,6 +178,43 @@ def get_latest_processed(ticker):
             return processed
     session.close()
     return None
+
+def get_processor_config(config_name='default'):
+    """
+    Retrieves a processor config by name.
+    Returns dict with weights, metrics, logic or None if not found.
+    """
+    session = Session()
+    config = session.query(ProcessorConfig).filter_by(name=config_name).first()
+    session.close()
+    if config:
+        return {
+            'weights': json.loads(config.weights),
+            'metrics': json.loads(config.metrics),
+            'logic': json.loads(config.logic)
+        }
+    return None
+
+def save_processor_config(name, weights, metrics, logic):
+    """
+    Saves or updates a processor config.
+    Returns config_id.
+    """
+    session = Session()
+    stmt = insert(ProcessorConfig).values(
+        name=name,
+        weights=json.dumps(weights),
+        metrics=json.dumps(metrics),
+        logic=json.dumps(logic)
+    ).on_conflict_do_update(
+        index_elements=['name'],
+        set_={'weights': json.dumps(weights), 'metrics': json.dumps(metrics), 'logic': json.dumps(logic)}
+    )
+    session.execute(stmt)
+    session.commit()
+    config_id = session.query(ProcessorConfig).filter_by(name=name).first().config_id
+    session.close()
+    return config_id
 
 def save_metrics(metrics):
     """
@@ -199,22 +267,23 @@ def save_metrics(metrics):
     session.close()
     return fetch_id
 
-def save_processed(processed, fetch_id):
+def save_processed(processed, fetch_id, config_id):
     """
-    Saves processed results to DB, linked to fetch_id.
+    Saves processed results to DB, linked to fetch_id and config_id.
     Stores flags and factor_boosts as JSON strings.
     """
     session = Session()
-    existing = session.query(ProcessedResult).filter_by(fetch_id=fetch_id).first()
+    existing = session.query(ProcessedResult).filter_by(fetch_id=fetch_id, config_id=config_id).first()
     if existing:
         session.close()
-        return  # Skip if already exists to avoid duplicates on re-seed
+        return  # Skip if already exists for this config
 
     flags_json = json.dumps(processed['flags'])
     factor_boosts_json = json.dumps(processed['factor_boosts'])
 
     result = ProcessedResult(
         fetch_id=fetch_id,
+        config_id=config_id,
         base_score=processed['base_score'],
         final_score=processed['final_score'],
         flags=flags_json,

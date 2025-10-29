@@ -42,4 +42,20 @@ Fixed points for style alignment, enabling targeted sub-lists. Factors allow cus
 - **Momentum (+5)**: Price near high with positive FCF—spots upward trends with cash; helps ride winners, per quantitative trend-following.
 - **Quality (+10)**: High margins with low D/E—highlights durable businesses; focuses on compounders with low volatility, ideal for long holds.
 - **Growth (+5)**: Low PEG in mid-caps—targets scalable opportunities; balances potential with feasibility, avoiding overhyped small/large caps.
+
+### Ranking and Scoring Overview
+Stocks are ranked by final score (0-100+), calculated as: base score (weighted average of individual metric scores) + percentage adjustments from enabled correlations/flags + fixed points from factor lenses. The default config prioritizes value investing (e.g., low P/E and P/B, high ROE and margins), but you can customize to suit other styles like growth or quality.
+
+### Customization
+Use the Customize page to create/edit configs:
+- Enter a config name (e.g., 'growth_focus').
+- Select metrics to include/exclude.
+- Adjust weights with sliders (0.0-0.3; aim for sum ~1.0).
+- For each correlation flag, checkbox to enable/disable and slider to tweak boost (within +/-10% of default, e.g., +15% can be 5-25%).
+- Save to session (clears on browser close/reload). Select config on main page to apply.
+- Export JSON to save/share; import to load. This allows extensibility without database changes.
+
+Data sourced from yfinance, cached locally for speed—seed initial data to populate.
+
+For custom stock filtering: Currently limited to hardcoded DEFAULT_TICKERS; if input ticker not in list, error. To relax: In streamlit_app.py create set button, remove 'valid_tickers = [t for t in input_tickers if t in DEFAULT_TICKERS]', use input_tickers directly; add st.warning if not all seeded ('Unseeded tickers won't show until fetched—run seed or add fetch button'). But don't add fetch yet; note in README as limitation/future.
 """)

@@ -1,55 +1,33 @@
 # quanticscreen
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-quanticscreen is a modular Python-based stock screening tool that analyzes publicly traded companies using key financial metrics from Yahoo Finance (via yfinance). It scores stocks with a focus on value strategies (low P/E, high ROE), applies correlations for boosts/penalties/flags (e.g., "Undervalued", "Quality Moat"), and generates ranked reports with positives/risks, factor sub-lists (value, momentum, quality, growth), and warnings. Data is cached in a SQLite database for efficiency, with optional seeding of ~700 tickers from major indices. Includes a Streamlit UI for interactive filtering, searching, and exporting.
-
-Originally LLM-driven for data and sentiment, it's now fully code-based for reliable, deterministic results—AI-optional for future extensions like sentiment overlays.
-
-## Project Idea and Goals
-Create a factor-investing screener inspired by value tactics, processing metrics like P/E, ROE%, D/E, P/B, PEG, margins, FCF/EBITDA % EV (with $actuals), price (52W range), market cap, EV, cash/debt. Core: Fetch/cache data, score/weight (0-100 base), add flags/boosts, output reports. Extensible for custom datasets, filters (e.g., by cap size, sector), and UI enhancements.
-
-At working prototype stage: Handles seeding, caching (72h freshness), processing, and interactive viewing. Good for personal or small-team use; verify outputs manually.
+quanticscreen is a Streamlit-based stock screening tool using yfinance for data, SQLite for caching metrics (72h expiry), on-the-fly processing with customizable configs stored ephemerally in session state (metrics include/exclude, weight sliders 0-0.3, correlation flags enable/disable with boost sliders +/-10% of default). Features: Seed ~700 tickers (large/mid/small cap from lists), dataset filters (All/Cap sizes/Value/Growth/Sector/Custom sets), search, flag filters, exclude negatives, top N/show all, ranked table with details, CSV export, factor sub-lists (value/momentum/quality/growth), warnings (e.g., high P/E). Password protected via .env for GitHub version.
 
 ## Setup
-1. Clone the repo and navigate in.
-2. Create/activate venv: `python -m venv .venv` then `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix).
-3. Install deps: `pip install -r requirements.txt` (includes streamlit, pandas, yfinance, sqlalchemy, python-dotenv).
-4. (Optional) Set env vars in `.env` (e.g., for passwords).
+1. Clone repo: `git clone https://github.com/your-repo/quanticscreen.git`
+2. `cd quanticscreen`
+3. Create/activate venv: `python -m venv .venv` then `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix).
+4. Install deps: `pip install -r requirements.txt`
+5. Create .env with `APP_PASSWORD=your_secret`
+6. Run: `streamlit run streamlit_app.py`
+
+To remove password (for local instance): Comment out the authentication block in streamlit_app.py (if 'authenticated' not in st.session_state: ... st.stop()).
 
 ## Usage
-### CLI Mode
-Run with presets (UNH, NVO, AAPL, MSFT, GOOGL):
-```
-python main.py
-```
-Custom list:
-```
-python main.py --tickers=TSLA,AMZN,NVDA
-```
-Outputs markdown report (ranked table, sub-lists, warnings) to console.
+- Sidebar: Select dataset, config, force refresh, top N, show all, exclude negatives.
+- Main: Search ticker/company, flag filters, ranked table (sortable), CSV export.
+- Pages: Customize (create/edit configs), Explanation (logic details).
+- Seed data via button (populates ~700 tickers).
 
-### Streamlit UI Mode
-Run locally: `streamlit run streamlit_app.py`
-- Sidebar: Select dataset (All, Large/Mid/Small Cap, Value/Growth, Sector), force refresh, top N.
-- Features: Seed data button, ticker/company search, flag multiselect filter, interactive table (sortable, scrollable metrics columns), factor expanders, warnings, CSV export.
-- Pages: Main screening + Explanation (detailed logic breakdown).
+## Limitations
+Tickers limited to ~700 hardcoded in tickers.py (expand for more); custom sets validate against this list—stocks not in list won't be added/seeded/shown. Data may have N/A for some metrics. No real-time updates beyond seeding.
 
-Access the live app at [https://quanticscreen.streamlit.app/](https://quanticscreen.streamlit.app/).
+For custom stock filtering: Currently limited to hardcoded DEFAULT_TICKERS; if input ticker not in list, error. To relax: In streamlit_app.py create set button, remove 'valid_tickers = [t for t in input_tickers if t in DEFAULT_TICKERS]', use input_tickers directly; add st.warning if not all seeded ('Unseeded tickers won't show until fetched—run seed or add fetch button'). But don't add fetch yet; note in README as limitation/future.
 
-### Seeding Data
-Seed ~700 tickers (S&P 500 + partial Russell 2000) via UI button or `python seeder.py`. Uses caching to avoid redundant Yahoo calls.
+## Contributing
+Fork and PR; report issues on GitHub.
 
-## Current Stage and Expectations
-Functional prototype: Reliable fetching/processing with DB caching, handles N/A, UI for exploration. Limitations: yfinance-dependent (potential outages), some metrics N/A (e.g., PEG), no sentiment yet, filters are in-memory (efficient for current scale). Accurate per source but cross-verify. Not production-ready (add tests, error handling).
-
-## Path Forward
-- Reintegrate sentiment (X/web tools for overrides).
-- Advanced filters (custom weights/thresholds).
-- Charts (e.g., score distributions).
-- Deployment enhancements (external DB for persistence).
-- Tests and scalability (e.g., larger seeds).
-
-Contributions: Fork/PR welcome.
-
-## License
-MIT—free to use/modify. See [LICENSE](LICENSE).
+## Screenshots
+![Main UI](path/to/main_ui_screenshot.png)
+![Customize Page](path/to/customize_screenshot.png)

@@ -128,17 +128,17 @@ def process_stock(metrics):
     # Positives/Risks (dynamic based on flags, rounded to 2 decimals, bullet points with \n- )
     positives_parts = []
     if "Undervalued" in flags:
-        positives_parts.append(f"Undervalued (low P/E {round(pe, 2)}, high ROE {round(roe, 2)}%)")
+        positives_parts.append(f"Undervalued with low P/E of {round(pe, 2)} and high ROE of {round(roe, 2)}%")
     if "Strong Balance Sheet" in flags:
-        positives_parts.append(f"Strong balance (low D/E {round(de, 2)}, high cash)")
+        positives_parts.append(f"Strong balance sheet with low D/E of {round(de, 2)} and cash reserves of {format_large(cash)}")
     if "Quality Moat" in flags:
-        positives_parts.append(f"Quality moat (high margins {round(gross, 2)}%/{round(net, 2)}%, FCF/EV {round(fcf_ev, 2)}%)")
+        positives_parts.append(f"Quality moat with gross margin {round(gross, 2)}%, net margin {round(net, 2)}%, and FCF/EV {round(fcf_ev, 2)}%")
     if "GARP" in flags:
-        positives_parts.append(f"GARP (PEG {round(peg, 2)}, moderate P/E)")
+        positives_parts.append(f"GARP opportunity with PEG of {round(peg, 2)} and P/E of {round(pe, 2)}")
     if "Momentum Building" in flags:
-        positives_parts.append(f"Momentum (price near high, EBITDA/EV {round(ebitda_ev, 2)}%)")
-    positives = "\n- ".join(positives_parts) if positives_parts else "Solid fundamentals based on metrics."
-    risks = f"High D/E ({round(de, 2)}) may strain balance sheet. Watch debt ({round(debt, 2)})." if de > 2 or debt > mcap else "Low risks based on metrics."
+        positives_parts.append(f"Building momentum with price near 52W high and EBITDA/EV of {round(ebitda_ev, 2)}%")
+    positives = "\n- " + "\n- ".join(positives_parts) if positives_parts else "Solid fundamentals based on available metrics."
+    risks = f"High D/E of {round(de, 2)} may strain balance sheet, with total debt of {format_large(debt)}." if de > 2 or debt > mcap else "Low risks based on available metrics."
 
     return {
         'base_score': base_score,

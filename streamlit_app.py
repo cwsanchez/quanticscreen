@@ -33,7 +33,7 @@ init_db()
 st.title("Stock Screening Tool")
 
 with st.sidebar:
-    dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"])
+    dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()))
     if dataset == "Sector":
         sectors = get_unique_sectors()
         selected_sector = st.selectbox("Select Sector", sectors)
@@ -46,6 +46,24 @@ with st.sidebar:
             seed()
         st.success("Data seeded!")
 
+    # Custom Sets
+    st.subheader("Create Custom Set")
+    set_name = st.text_input("Set Name")
+    ticker_input = st.text_area("Comma-separated Tickers (e.g., AAPL,MSFT)")
+    if st.button("Create Set"):
+        if set_name and ticker_input:
+            input_tickers = [t.strip().upper() for t in ticker_input.split(',')]
+            valid_tickers = [t for t in input_tickers if t in DEFAULT_TICKERS]  # Assuming DEFAULT_TICKERS from tickers.py
+            if valid_tickers:
+                if 'custom_sets' not in st.session_state:
+                    st.session_state.custom_sets = {}
+                st.session_state.custom_sets[set_name] = valid_tickers
+                st.success(f"Created set '{set_name}' with {len(valid_tickers)} valid tickers.")
+            else:
+                st.error("No valid tickers provided. Must be from hard-coded list.")
+        else:
+            st.error("Provide a name and tickers.")
+
 # Get all tickers and load latest processed
 tickers = get_all_tickers()
 results = []
@@ -55,7 +73,10 @@ for ticker in tickers:
         results.append(processed)
 
 # Apply filters based on dataset
-if dataset == "Large Cap":
+if dataset in st.session_state.get('custom_sets', {}):
+    custom_tickers = st.session_state.custom_sets[dataset]
+    results = [r for r in results if r['metrics']['Ticker'] in custom_tickers]
+elif dataset == "Large Cap":
     results = [r for r in results if get_float(r['metrics'], "Market Cap") > 10e9]
 elif dataset == "Mid Cap":
     results = [r for r in results if 2e9 <= get_float(r['metrics'], "Market Cap") <= 10e9]

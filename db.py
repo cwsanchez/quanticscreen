@@ -79,11 +79,14 @@ def init_db():
     
     # Migration for config_id column in ProcessedResults
     from sqlalchemy import inspect
+    from sqlalchemy.sql import text
     inspector = inspect(engine)
     if 'ProcessedResults' in inspector.get_table_names():
         columns = [col['name'] for col in inspector.get_columns('ProcessedResults')]
         if 'config_id' not in columns:
-            engine.execute('ALTER TABLE "ProcessedResults" ADD COLUMN config_id INTEGER REFERENCES "ProcessorConfigs" (config_id)')
+            with engine.connect() as conn:
+                conn.execute(text('ALTER TABLE "ProcessedResults" ADD COLUMN config_id INTEGER REFERENCES "ProcessorConfigs" (config_id)'))
+                conn.commit()
     
     # Migration: Set old default timestamp for any records missing fetch_timestamp to force re-fetch on next seed
     session = Session()

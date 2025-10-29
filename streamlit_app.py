@@ -1,5 +1,5 @@
 import streamlit as st
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_processed, Session, ProcessorConfig
 from processor import get_float
 from tickers import DEFAULT_TICKERS  # Import for validation
 import pandas as pd
@@ -38,6 +38,12 @@ with st.sidebar:
     if dataset == "Sector":
         sectors = get_unique_sectors()
         selected_sector = st.selectbox("Select Sector", sectors)
+
+    session = Session()
+    config_names = [c.name for c in session.query(ProcessorConfig).all()]
+    session.close()
+    config_name = st.selectbox('Select Config', config_names, index=config_names.index('default') if 'default' in config_names else 0)
+
     force_refresh = st.checkbox("Force Refresh (Re-fetch All)")
     num_top = st.slider("Top N Stocks", 1, 50, 20)
     show_all = st.checkbox("Show All (Ignore Top N)")
@@ -65,11 +71,17 @@ with st.sidebar:
         else:
             st.error("Provide a name and tickers.")
 
+# Get config_id from config_name
+session = Session()
+config = session.query(ProcessorConfig).filter_by(name=config_name).first()
+config_id = config.config_id if config else 1
+session.close()
+
 # Get all tickers and load latest processed
 tickers = get_all_tickers()
 results = []
 for ticker in tickers:
-    processed = get_latest_processed(ticker, config_id=1)  # Assuming default config_id=1
+    processed = get_latest_processed(ticker, config_id=config_id)
     if processed:
         results.append(processed)
 

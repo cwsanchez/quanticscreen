@@ -14,6 +14,18 @@ def format_large(val):
         return f"{round(val / 1e6, 2)}M"
     else:
         return f"{round(val, 2)}"
+
+CONDITIONS = {
+    'Undervalued': lambda m: get_float(m, 'P/E') < 15 and get_float(m, 'ROE') > 15,
+    'Strong Balance Sheet': lambda m: get_float(m, 'D/E') < 1 and get_float(m, 'Total Cash') > get_float(m, 'Total Debt'),
+    'Quality Moat': lambda m: get_float(m, 'Gross Margin') > 40 and get_float(m, 'Net Profit Margin') > 15 and get_float(m, 'FCF % EV TTM') > 5,
+    'GARP': lambda m: get_float(m, 'PEG') < 1.5 and get_float(m, 'P/E') < 20,
+    'High-Risk Growth': lambda m: get_float(m, 'P/E') > 30 and get_float(m, 'PEG') < 1,
+    'Value Trap': lambda m: get_float(m, 'P/B') < 1.5 and get_float(m, 'ROE') < 5,
+    'Momentum Building': lambda m: get_float(m, 'Current Price') > 0.9 * get_float(m, '52W High') and get_float(m, 'EBITDA % EV TTM') > 5,
+    'Debt Burden': lambda m: get_float(m, 'D/E') > 2 and get_float(m, 'FCF % EV TTM') < 1
+}
+
 def process_stock(metrics, config_name='default'):
     """
     Processes a single stock's metrics per algorithm steps 2-5.
@@ -41,16 +53,32 @@ def process_stock(metrics, config_name='default'):
     # Load config
     config = get_processor_config(config_name)
     if not config:
-        raise ValueError(f"Config '{config_name}' not found")
+        # Use hardcoded defaults
+        weights = {
+            'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
+            'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
+            'EBITDA % EV TTM': 0.075, 'Balance': 0.05
+        }
+        selected_metrics = list(weights.keys())
+        logic = {
+            'Undervalued': {'enabled': True, 'boost': 15},
+            'Strong Balance Sheet': {'enabled': True, 'boost': 10},
+            'Quality Moat': {'enabled': True, 'boost': 15},
+            'GARP': {'enabled': True, 'boost': 10},
+            'High-Risk Growth': {'enabled': True, 'boost': -10},
+            'Value Trap': {'enabled': True, 'boost': -10},
+            'Momentum Building': {'enabled': True, 'boost': 5},
+            'Debt Burden': {'enabled': True, 'boost': -15}
+        }
+    else:
+        selected_metrics = config['metrics']
+        weights = config['weights']
+        logic = config['logic']
 
-    selected_metrics = config['metrics']
-    weights = config['weights']
-
-    # Normalize weights if sum != 1 for selected metrics
-    total_weight = sum(weights.get(m, 0) for m in selected_metrics)
-    if total_weight == 0:
-        total_weight = 1  # Avoid division by zero
-    normalized_weights = {m: weights.get(m, 0) / total_weight for m in selected_metrics}
+    # Normalize weights for selected only
+    sum_w = sum(weights.get(m, 0) for m in selected_metrics)
+    if sum_w > 0:
+        weights = {m: weights[m] / sum_w for m in selected_metrics}
 
     # Step 2: Individual Metric Scoring (0-10)
     # (Comments on single-metric thresholds omitted as per user: only multi-metric correlations need explanation)
@@ -77,46 +105,22 @@ def process_stock(metrics, config_name='default'):
         metric_scores['Balance'] = 10 if (cash > 0.2 * mcap) or (price > 0.8 * high) else 0 if (debt > mcap) or (price < 1.1 * low) else 5
 
     # Step 3: Weighting & Base Score (0-100)
-    base_score = sum(metric_scores.get(m, 0) * normalized_weights.get(m, 0) for m in selected_metrics) * 10  # Scale to 0-100
+    base_score = sum(metric_scores.get(m, 0) * weights.get(m, 0) for m in selected_metrics) * 10  # Scale to 0-100
 
     # Step 4: Correlations & Flags (Boost/Penalty %)
     flags = []
-    boost_penalty = 0.0
-
-    logic = config['logic']
-    for flag, data in logic.items():
-        if not data.get('enabled', False):
-            continue
-        boost = data.get('boost', 0)
-        condition_met = False
-        if flag == "Undervalued":
-            # Indicates undervalued companies with strong profitability/efficiency.
-            condition_met = pe < 15 and roe > 15
-        elif flag == "Strong Balance Sheet":
-            # Indicates strong balance sheet with low leverage/liquidity buffer.
-            condition_met = de < 1 and cash > 0.1 * mcap
-        elif flag == "Quality Moat":
-            # Indicates quality moat with sustainable profitability/cash generation.
-            condition_met = gross > 40 and net > 15 and fcf_ev > 5
-        elif flag == "GARP":
-            # Indicates growth at reasonable price (GARP).
-            condition_met = peg < 1 and 15 <= pe <= 25
-        elif flag == "High-Risk Growth":
-            # Indicates high-risk growth potential.
-            condition_met = pe > 30 and peg < 0.8
-        elif flag == "Value Trap":
-            # Indicates potential value trap (cheap but poor returns).
-            condition_met = pb < 1.5 and roe < 5
-        elif flag == "Momentum Building":
-            # Indicates positive momentum with operational strength.
-            condition_met = price > 0.9 * high and ebitda_ev > 10
-        elif flag == "Debt Burden":
-            # Indicates debt burden with strained cash flow.
-            condition_met = de > 2 and fcf_ev < 3
-
-        if condition_met:
+    boost_total = 0
+    positives = ""
+    risks = ""
+    for flag in logic:
+        if logic[flag]['enabled'] and flag in CONDITIONS and CONDITIONS[flag](metrics):
             flags.append(flag)
-            boost_penalty += boost
+            boost = logic[flag]['boost']
+            boost_total += boost
+            if boost > 0:
+                positives += f'{flag} (+{boost}%) '
+            else:
+                risks += f'{flag} ({boost}%) '
 
     # Step 5: Factor Lens (Extra Boosts, sub-rankings in main.py)
     factor_boosts = {
@@ -132,22 +136,13 @@ def process_stock(metrics, config_name='default'):
     factor_boost_total = sum(factor_boosts.values())
 
     # Final Score
-    final_score = base_score * (1 + (boost_penalty / 100)) + factor_boost_total
+    final_score = base_score + (base_score * (boost_total / 100)) + factor_boost_total
 
-    # Positives/Risks (dynamic based on flags, rounded to 2 decimals, bullet points with \n- )
-    positives_parts = []
-    if "Undervalued" in flags:
-        positives_parts.append(f"Undervalued with low P/E of {round(pe, 2)} and high ROE of {round(roe, 2)}%")
-    if "Strong Balance Sheet" in flags:
-        positives_parts.append(f"Strong balance sheet with low D/E of {round(de, 2)} and cash reserves of {format_large(cash)}")
-    if "Quality Moat" in flags:
-        positives_parts.append(f"Quality moat with gross margin {round(gross, 2)}%, net margin {round(net, 2)}%, and FCF/EV {round(fcf_ev, 2)}%")
-    if "GARP" in flags:
-        positives_parts.append(f"GARP opportunity with PEG of {round(peg, 2)} and P/E of {round(pe, 2)}")
-    if "Momentum Building" in flags:
-        positives_parts.append(f"Building momentum with price near 52W high and EBITDA/EV of {round(ebitda_ev, 2)}%")
-    positives = "\n- " + "\n- ".join(positives_parts) if positives_parts else "Solid fundamentals based on available metrics."
-    risks = f"High D/E of {round(de, 2)} may strain balance sheet, with total debt of {format_large(debt)}." if de > 2 or debt > mcap else "Low risks based on available metrics."
+    # If positives or risks are empty, use defaults
+    if not positives:
+        positives = "Solid fundamentals based on available metrics."
+    if not risks:
+        risks = "Low risks based on available metrics."
 
     return {
         'base_score': base_score,

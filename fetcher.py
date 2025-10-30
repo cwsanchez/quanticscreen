@@ -18,12 +18,32 @@ class StockFetcher:
             stock = yf.Ticker(ticker)
             info = stock.info
             # Extract and format metrics
+            pe = info.get('trailingPE', None)
+            if pe is None:
+                market_cap = info.get('marketCap', None)
+                trailing_eps = info.get('trailingEps', None)
+                if market_cap and trailing_eps and trailing_eps != 0:
+                    pe = market_cap / trailing_eps
+                else:
+                    pe = 'N/A'
+                    self.logger.warning(f"Missing P/E for {ticker}, fallback calculation failed.")
+
+            p_fcf = info.get('priceToFreeCashflow', None)
+            if p_fcf is None:
+                market_cap = info.get('marketCap', None)
+                free_cashflow_to_equity = info.get('freeCashflowToEquity', None)
+                if market_cap and free_cashflow_to_equity and free_cashflow_to_equity != 0:
+                    p_fcf = market_cap / free_cashflow_to_equity
+                else:
+                    p_fcf = 'N/A'
+                    self.logger.warning(f"Missing P/FCF for {ticker}, fallback calculation failed.")
+
             metrics = {
                 "Ticker": ticker,
                 "Company Name": info.get('longName', 'N/A'),
                 "Industry": info.get('industry', 'N/A'),
                 "Sector": info.get('sector', 'N/A'),
-                "P/E": info.get('trailingPE', 'N/A'),
+                "P/E": pe,
                 "ROE": info.get('returnOnEquity', 'N/A') * 100 if info.get('returnOnEquity') else 'N/A',  # Convert to %
                 "D/E": info.get('debtToEquity', 'N/A') / 100 if info.get('debtToEquity') else 'N/A',  # Convert % to ratio (e.g., 75.577 -> 0.756)
                 "P/B": info.get('priceToBook', 'N/A'),
@@ -40,8 +60,15 @@ class StockFetcher:
                 "Total Cash": info.get('totalCash', 'N/A'),
                 "Total Debt": info.get('totalDebt', 'N/A'),
                 "FCF Actual": info.get('freeCashflow', 'N/A'),
-                "EBITDA Actual": info.get('ebitda', 'N/A')
+                "EBITDA Actual": info.get('ebitda', 'N/A'),
+                "P/FCF": p_fcf
             }
+
+            # Log missing metrics
+            for key, value in metrics.items():
+                if value == 'N/A':
+                    self.logger.warning(f"Missing metric {key} for {ticker}")
+
             return metrics
         except Exception as e:
             self.logger.error(f"Error fetching metrics for {ticker}: {e}")

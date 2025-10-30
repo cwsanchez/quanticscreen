@@ -18,7 +18,7 @@ def seed():
     """
     init_db()
 
-    all_tickers = list(set(large_cap_tickers + small_cap_tickers))  # Dedup
+    all_tickers = list(set(large_cap_tickers))  # Dedup, removed undefined small_cap_tickers to fix NameError
 
     fetcher = StockFetcher()
     for batch in batches(all_tickers, 50):

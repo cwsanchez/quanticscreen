@@ -40,10 +40,16 @@ class MetricFetch(Base):
     total_debt = Column(Float)
     fcf_actual = Column(Float)
     ebitda_actual = Column(Float)
+    p_fcf = Column(Float)
 
     stock = relationship("Stock", back_populates="fetches")
 
 Stock.fetches = relationship("MetricFetch", back_populates="stock")
+
+class Metadata(Base):
+    __tablename__ = 'metadata'
+    key = Column(String, primary_key=True)
+    value = Column(String)
 
 class ProcessedResult(Base):
     __tablename__ = 'ProcessedResults'
@@ -78,6 +84,14 @@ def init_db():
         if 'config_id' in columns:
             with engine.connect() as conn:
                 conn.execute(text('ALTER TABLE "ProcessedResults" DROP COLUMN config_id'))
+                conn.commit()
+
+    # Migration: Add p_fcf column to MetricFetches if not exists
+    if 'MetricFetches' in inspector.get_table_names():
+        columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+        if 'p_fcf' not in columns:
+            with engine.connect() as conn:
+                conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN p_fcf FLOAT'))
                 conn.commit()
 
     Base.metadata.create_all(engine)
@@ -134,6 +148,7 @@ def get_latest_metrics(ticker):
             'Total Debt': get_value_from_db(latest_fetch.total_debt),
             'FCF Actual': get_value_from_db(latest_fetch.fcf_actual),
             'EBITDA Actual': get_value_from_db(latest_fetch.ebitda_actual),
+            'P/FCF': get_value_from_db(latest_fetch.p_fcf),
             'fetch_timestamp': latest_fetch.fetch_timestamp,  # Added for potential future use, though not required after seeder simplification
             'fetch_id': latest_fetch.fetch_id  # Added to allow direct access if needed
         }
@@ -183,13 +198,28 @@ def save_metrics(metrics):
         total_cash=metrics.get('Total Cash') if metrics.get('Total Cash') != 'N/A' else None,
         total_debt=metrics.get('Total Debt') if metrics.get('Total Debt') != 'N/A' else None,
         fcf_actual=metrics.get('FCF Actual') if metrics.get('FCF Actual') != 'N/A' else None,
-        ebitda_actual=metrics.get('EBITDA Actual') if metrics.get('EBITDA Actual') != 'N/A' else None
+        ebitda_actual=metrics.get('EBITDA Actual') if metrics.get('EBITDA Actual') != 'N/A' else None,
+        p_fcf=metrics.get('P/FCF') if metrics.get('P/FCF') != 'N/A' else None
     )
     session.add(fetch)
     session.commit()
     fetch_id = fetch.fetch_id
     session.close()
     return fetch_id
+
+def get_metadata(key):
+    session = Session()
+    result = session.query(Metadata).filter_by(key=key).first()
+    session.close()
+    return result.value if result else None
+
+def set_metadata(key, value):
+    session = Session()
+    stmt = insert(Metadata).values(key=key, value=value)
+    stmt = stmt.on_conflict_do_update(index_elements=['key'], set_={'value': value})
+    session.execute(stmt)
+    session.commit()
+    session.close()
 
 def get_all_tickers():
     """

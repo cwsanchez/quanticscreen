@@ -58,6 +58,7 @@ def process_stock(metrics, config_dict=None):
     high = get_float(metrics, '52W High')
     low = get_float(metrics, '52W Low')
     debt = get_float(metrics, 'Total Debt')
+    p_fcf = get_float(metrics, 'P/FCF')
 
     # Load config or defaults
     if config_dict is None:
@@ -101,6 +102,8 @@ def process_stock(metrics, config_dict=None):
         metric_scores['EBITDA % EV TTM'] = 10 if ebitda_ev > 10 else 7 if ebitda_ev >= 5 else 5 if ebitda_ev >= 2 else 0
     if 'Balance' in selected_metrics:
         metric_scores['Balance'] = 10 if (cash > 0.2 * mcap) or (price > 0.8 * high) else 0 if (debt > mcap) or (price < 1.1 * low) else 5
+    if 'P/FCF' in selected_metrics:
+        metric_scores['P/FCF'] = 10 if p_fcf < 15 else 7 if p_fcf < 20 else 5 if p_fcf < 30 else 2 if p_fcf < 40 else 0
 
     # Step 3: Weighting & Base Score (0-100)
     base_score = sum(metric_scores.get(m, 0) * weights.get(m, 0) for m in selected_metrics) * 10  # Scale to 0-100
@@ -123,7 +126,7 @@ def process_stock(metrics, config_dict=None):
     # Step 5: Factor Lens (Extra Boosts, sub-rankings in main.py)
     factor_boosts = {
         # Identifies undervalued assets with strong equity returns.
-        'value': 10 if pb < 1.5 and roe > 15 else 0,
+        'value': 10 if (pb < 1.5 and roe > 15) or p_fcf < 15 else 0,
         # Identifies upward trends with cash support.
         'momentum': 5 if price > 0.9 * high and get_float(metrics, 'FCF Actual') > 0 else 0,
         # Identifies high-quality businesses with profitability/low leverage.

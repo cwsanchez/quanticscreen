@@ -1,5 +1,5 @@
 import streamlit as st
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics, get_metadata, set_metadata
 from processor import get_float, process_stock, DEFAULT_LOGIC
 from tickers import DEFAULT_TICKERS  # Import for validation
 import pandas as pd
@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 import re
 import time
 from fetcher import StockFetcher
+from datetime import datetime, timedelta, time
+import pytz
+import threading
 
 load_dotenv()
 st.set_page_config(layout="wide")  # Wider page
@@ -34,6 +37,37 @@ if not st.session_state.authenticated:
 
 init_db()
 
+# Auto-fetch logic
+def fetch_bg():
+    fetcher = StockFetcher()
+    tickers = DEFAULT_TICKERS  # or get_all_tickers() + custom if needed
+    for t in tickers:
+        if not get_latest_metrics(t):
+            try:
+                metrics = fetcher.fetch_metrics(t)
+                if metrics:
+                    save_metrics(metrics)
+                time.sleep(1)
+            except Exception as e:
+                pass  # Log if needed
+    set_metadata('last_fetch_time', datetime.now().isoformat())
+
+# Check if need to fetch
+et_tz = pytz.timezone('US/Eastern')
+now_et = datetime.now(et_tz)
+is_weekday = now_et.weekday() < 5
+market_close = time(16, 0)
+market_open = time(9, 30)
+after_close_before_open = is_weekday and (now_et.time() > market_close or now_et.time() < market_open)
+
+last_fetch_str = get_metadata('last_fetch_time')
+last_fetch = datetime.fromisoformat(last_fetch_str) if last_fetch_str else None
+need_fetch = last_fetch is None or (datetime.now() - last_fetch > timedelta(hours=12)) or after_close_before_open
+
+if need_fetch:
+    threading.Thread(target=fetch_bg).start()
+    st.spinner("Auto-fetching data in background...")
+
 st.title("Stock Screening Tool")
 
 with st.sidebar:
@@ -47,7 +81,7 @@ with st.sidebar:
         default_weights = {
             'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
             'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
-            'EBITDA % EV TTM': 0.075, 'Balance': 0.05
+            'EBITDA % EV TTM': 0.075, 'Balance': 0.05, 'P/FCF': 0.075
         }
         default_metrics = list(default_weights.keys())
         st.session_state.configs = {
@@ -68,6 +102,7 @@ with st.sidebar:
         with st.spinner("Seeding data (this may take a while)..."):
             seed()
         st.success("Data seeded!")
+        st.rerun()
 
     # Custom Sets
     st.subheader("Create Custom Set")
@@ -82,25 +117,25 @@ with st.sidebar:
                     st.session_state.custom_sets = {}
                 st.session_state.custom_sets[set_name] = valid_tickers
                 st.success(f"Created set '{set_name}' with {len(valid_tickers)} valid tickers.")
+                st.rerun()
                 
-                # Check for unseeded tickers
+                # Check for unseeded tickers and fetch in background
                 unseeded = [t for t in valid_tickers if not get_latest_metrics(t)]
                 if unseeded:
-                    st.warning(f"Unseeded tickers won't appear until fetched—run seed or add to list: {', '.join(unseeded)}")
+                    st.warning(f"Unseeded tickers will be fetched in background: {', '.join(unseeded)}")
                     
-                    if st.button("Fetch Missing"):
+                    def fetch_custom_bg(unseeded):
                         fetcher = StockFetcher()
                         for t in unseeded:
                             try:
                                 metrics = fetcher.fetch_metrics(t)
-                                if metrics and metrics.get('Ticker') == t:  # Ensure not empty/partial
+                                if metrics:
                                     save_metrics(metrics)
-                                    st.success(f"Fetched and saved {t}")
-                                else:
-                                    st.error(f"Failed to fetch data for {t}")
                                 time.sleep(1)
                             except Exception as e:
-                                st.error(f"Failed to fetch {t}: {e}")
+                                pass  # Log if needed
+                    
+                    threading.Thread(target=fetch_custom_bg, args=(unseeded,)).start()
             else:
                 st.error("No valid tickers provided. Tickers should be 1-5 uppercase letters, optionally with '.' or '-'.")
         else:
@@ -188,6 +223,7 @@ if top_results:
             "Score": f"{round(res['final_score'], 2)}",
             "Price": f"{round(get_float(m, 'Current Price'), 2)}" if m['Current Price'] != 'N/A' else 'N/A',
             "52W High/Low": f"{round(get_float(m, '52W High'), 2)} / {round(get_float(m, '52W Low'), 2)}" if m['52W High'] != 'N/A' else 'N/A',
+            "MC": format_large(get_float(m, 'Market Cap')) if m['Market Cap'] != 'N/A' else 'N/A',
             "EV": format_large(get_float(m, 'EV')) if m['EV'] != 'N/A' else 'N/A',
             "Total Cash": format_large(get_float(m, 'Total Cash')) if m['Total Cash'] != 'N/A' else 'N/A',
             "Total Debt": format_large(get_float(m, 'Total Debt')) if m['Total Debt'] != 'N/A' else 'N/A',
@@ -197,6 +233,7 @@ if top_results:
             "PEG": f"{round(get_float(m, 'PEG'), 2)}" if m['PEG'] != 'N/A' else 'N/A',
             "Gross Margin %": f"{round(get_float(m, 'Gross Margin'), 2)}" if m['Gross Margin'] != 'N/A' else 'N/A',
             "FCF/EV %": f"{round(get_float(m, 'FCF % EV TTM'), 2)}" if m['FCF % EV TTM'] != 'N/A' else 'N/A',
+            "P/FCF": f"{round(get_float(m, 'P/FCF'), 2)}" if m.get('P/FCF', 'N/A') != 'N/A' else 'N/A',
             "D/E": f"{round(get_float(m, 'D/E'), 2)}" if m['D/E'] != 'N/A' else 'N/A',
             "Flags": ", ".join(res['flags']),
             "Positives": positives_str,

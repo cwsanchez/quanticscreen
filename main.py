@@ -1,6 +1,6 @@
 # main.py (updated to use caching)
 import argparse
-from fetcher import fetch_metrics
+from fetcher import StockFetcher
 from processor import process_stock, get_float
 from db import init_db, get_latest_metrics, save_metrics, save_processed  # Updated imports
 
@@ -17,10 +17,11 @@ def main():
 
     # Step 1: Gather data with caching
     results = []
+    fetcher = StockFetcher()
     for ticker in tickers:
         metrics = get_latest_metrics(ticker)  # Check cache first
         if not metrics:
-            metrics = fetch_metrics(ticker)  # Fetch fresh if no recent cache
+            metrics = fetcher.fetch_metrics(ticker)  # Fetch fresh if no recent cache
             if metrics:
                 fetch_id = save_metrics(metrics)
                 processed = process_stock(metrics)

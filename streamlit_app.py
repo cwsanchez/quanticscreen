@@ -1,5 +1,5 @@
 import streamlit as st
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics
 from processor import get_float, process_stock, DEFAULT_LOGIC
 from tickers import DEFAULT_TICKERS  # Import for validation
 import pandas as pd
@@ -8,6 +8,9 @@ from seeder import seed
 import io  # For CSV export
 import os
 from dotenv import load_dotenv
+import re
+import time
+from fetcher import StockFetcher
 
 load_dotenv()
 st.set_page_config(layout="wide")  # Wider page
@@ -73,14 +76,33 @@ with st.sidebar:
     if st.button("Create Set"):
         if set_name and ticker_input:
             input_tickers = [t.strip().upper() for t in ticker_input.split(',')]
-            valid_tickers = [t for t in input_tickers if t in DEFAULT_TICKERS]  # Assuming DEFAULT_TICKERS from tickers.py
+            valid_tickers = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t)]
             if valid_tickers:
                 if 'custom_sets' not in st.session_state:
                     st.session_state.custom_sets = {}
                 st.session_state.custom_sets[set_name] = valid_tickers
                 st.success(f"Created set '{set_name}' with {len(valid_tickers)} valid tickers.")
+                
+                # Check for unseeded tickers
+                unseeded = [t for t in valid_tickers if not get_latest_metrics(t)]
+                if unseeded:
+                    st.warning(f"Unseeded tickers won't appear until fetched—run seed or add to list: {', '.join(unseeded)}")
+                    
+                    if st.button("Fetch Missing"):
+                        fetcher = StockFetcher()
+                        for t in unseeded:
+                            try:
+                                metrics = fetcher.fetch_metrics(t)
+                                if metrics and metrics.get('Ticker') == t:  # Ensure not empty/partial
+                                    save_metrics(metrics)
+                                    st.success(f"Fetched and saved {t}")
+                                else:
+                                    st.error(f"Failed to fetch data for {t}")
+                                time.sleep(1)
+                            except Exception as e:
+                                st.error(f"Failed to fetch {t}: {e}")
             else:
-                st.error("No valid tickers provided. Must be from hard-coded list.")
+                st.error("No valid tickers provided. Tickers should be 1-5 uppercase letters, optionally with '.' or '-'.")
         else:
             st.error("Provide a name and tickers.")
 

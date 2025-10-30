@@ -21,9 +21,9 @@ To remove password (for local instance): Comment out the authentication block in
 - Seed data via button (populates ~700 tickers).
 
 ## Limitations
-Tickers limited to ~700 hardcoded in tickers.py (expand for more); custom sets validate against this list—stocks not in list won't be added/seeded/shown. Data may have N/A for some metrics. No real-time updates beyond seeding.
+Tickers limited to ~700 hardcoded in tickers.py (expand for more). Data may have N/A for some metrics. No real-time updates beyond seeding.
 
-For custom stock filtering: Currently limited to hardcoded DEFAULT_TICKERS; if input ticker not in list, error. To relax: In streamlit_app.py create set button, remove 'valid_tickers = [t for t in input_tickers if t in DEFAULT_TICKERS]', use input_tickers directly; add st.warning if not all seeded ('Unseeded tickers won't show until fetched—run seed or add fetch button'). But don't add fetch yet; note in README as limitation/future.
+Custom sets now allow any valid ticker symbol (1-5 uppercase letters, optionally with '.' or '-'). If any input tickers are not seeded in the database, a warning is displayed: "Unseeded tickers won't appear until fetched—run seed or add to list." A "Fetch Missing" button is provided to fetch metrics for unseeded tickers using yfinance, with rate limiting (1 second delay between fetches). Fetch failures (e.g., due to network errors or invalid symbols) are handled with st.error messages in the UI.
 
 ## Contributing
 Fork and PR; report issues on GitHub.

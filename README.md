@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-quanticscreen is a Streamlit-based stock screening tool using yfinance for data, SQLite for caching metrics (72h expiry), on-the-fly processing with customizable configs stored ephemerally in session state (metrics include/exclude, weight sliders 0-0.3, correlation flags enable/disable with boost sliders +/-10% of default). Features: Seed ~700 tickers (large/mid/small cap from lists), dataset filters (All/Cap sizes/Value/Growth/Sector/Custom sets), search, flag filters, exclude negatives, top N/show all, ranked table with details, CSV export, factor sub-lists (value/momentum/quality/growth), warnings (e.g., high P/E). Password protected via .env for GitHub version.
+quanticscreen is a Streamlit-based stock screening tool using yfinance for data, SQLite for caching metrics (72h expiry), on-the-fly processing with customizable configs stored ephemerally in session state (metrics include/exclude, weight sliders 0-0.3, correlation flags enable/disable with boost sliders +/-10% of default). Features: Seed ~1500 tickers (prioritized large/mid caps from CSV), dataset filters (All/Cap sizes/Value/Growth/Sector/Custom sets), search, flag filters, exclude negatives, top N/show all, ranked table with details (including new MC and P/FCF metrics), CSV export, factor sub-lists (value/momentum/quality/growth), warnings (e.g., high P/E). Password protected via .env for GitHub version. Auto-fetches missing/expired data on launch if >12h since last fetch or after market hours.
 
 ## Setup
 1. Clone repo: `git clone https://github.com/your-repo/quanticscreen.git`
@@ -18,12 +18,11 @@ To remove password (for local instance): Comment out the authentication block in
 - Sidebar: Select dataset, config, force refresh, top N, show all, exclude negatives.
 - Main: Search ticker/company, flag filters, ranked table (sortable), CSV export.
 - Pages: Customize (create/edit configs), Explanation (logic details).
-- Seed data via button (populates ~700 tickers).
+- Seed data via button (populates ~1500 tickers).
+- Auto-refresh: App fetches missing/expired data in background on launch. Restarting app may require re-seeding if DB reset needed (delete stock_screen.db).
 
 ## Limitations
-Tickers limited to ~700 hardcoded in tickers.py (expand for more). Data may have N/A for some metrics. No real-time updates beyond seeding.
-
-Custom sets now allow any valid ticker symbol (1-5 uppercase letters, optionally with '.' or '-'). If any input tickers are not seeded in the database, a warning is displayed: "Unseeded tickers won't appear until fetched—run seed or add to list." A "Fetch Missing" button is provided to fetch metrics for unseeded tickers using yfinance, with rate limiting (1 second delay between fetches). Fetch failures (e.g., due to network errors or invalid symbols) are handled with st.error messages in the UI.
+Data may have N/A for some metrics (with fallback handling for P/E). Custom sets fetch unseeded tickers in background.
 
 ## Contributing
 Fork and PR; report issues on GitHub.

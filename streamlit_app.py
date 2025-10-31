@@ -20,6 +20,7 @@ import threading
 load_dotenv()
 st.set_page_config(layout="wide")  # Wider page
 
+# Set USERS in .env as JSON, e.g., {\"usernames\": {\"user\": {\"name\": \"User\", \"password\": \"hashed_pass\"}}}; generate hashes via stauth.Hasher.
 # Authentication
 credentials_json = os.getenv('USERS')
 if credentials_json:
@@ -38,7 +39,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=30
 )
 
-authenticator.login('Login', 'main')
+authenticator.login(location='main', key='auth_login')
 
 authentication_status = st.session_state.get("authentication_status")
 name = st.session_state.get("name")

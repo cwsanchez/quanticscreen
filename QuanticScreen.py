@@ -90,7 +90,9 @@ with st.sidebar:
     config_options = preset_options + custom_configs
     config_name = st.selectbox("Select Config", config_options, index=0)
 
-    force_refresh = st.checkbox("Force Refresh (Re-fetch All)")
+    if st.button("Force Refresh (Re-fetch All)"):
+        st.warning("Starting force refresh...")
+        threading.Thread(target=lambda: seed(force=True)).start()
     num_top = st.slider("Top N Stocks", 1, 50, 20)
     show_all = st.checkbox("Show All (Ignore Top N)")
     exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)")
@@ -167,8 +169,6 @@ elif dataset == "Growth":
 elif dataset == "Sector":
     results = [r for r in results if r['metrics'].get("Sector", "N/A") == selected_sector]
 
-if force_refresh:
-    st.warning("Force refresh not implemented for all; re-seed or re-run for selected tickers.")
 
 # Additional filters
 search = st.text_input("Search Ticker/Company")

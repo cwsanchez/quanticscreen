@@ -1,4 +1,6 @@
 import streamlit as st
+import json
+import streamlit_authenticator as stauth
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics, get_metadata, set_metadata
 from processor import get_float, process_stock, DEFAULT_LOGIC
 from tickers import DEFAULT_TICKERS  # Import for validation
@@ -18,21 +20,32 @@ import threading
 load_dotenv()
 st.set_page_config(layout="wide")  # Wider page
 
-# Password protection from env
-PASSWORD = os.getenv("APP_PASSWORD")  # Env var name; set to your secret value
+# Authentication
+credentials_json = os.getenv('USERS')
+if credentials_json:
+    try:
+        credentials = json.loads(credentials_json)
+    except json.JSONDecodeError:
+        credentials = {"usernames": {}}
+        st.error("Invalid USERS format in .env")
+else:
+    credentials = {"usernames": {}}
 
-# Use session state to persist authentication
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
+authenticator = stauth.Authenticate(
+    credentials,
+    'quanticscreen_auth',
+    'abcdef',
+    cookie_expiry_days=30
+)
 
-if not st.session_state.authenticated:
-    entered_password = st.text_input("Enter password to access the app", type="password")
-    if st.button("Submit"):
-        if entered_password == PASSWORD:
-            st.session_state.authenticated = True
-            st.rerun()  # Rerun to refresh the app
-        else:
-            st.error("Incorrect password. Please try again.")
+authenticator.login('Login', 'main')
+
+if st.session_state.get('authentication_status') is False:
+    st.error('Username/password is incorrect')
+elif st.session_state.get('authentication_status') is None:
+    st.warning('Please enter your username and password')
+
+if not st.session_state.get('authentication_status', False):
     st.stop()
 
 init_db()
@@ -71,6 +84,7 @@ if need_fetch:
 st.title("Stock Screening Tool")
 
 with st.sidebar:
+    authenticator.logout("Logout", "sidebar")
     dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()))
     if dataset == "Sector":
         sectors = get_unique_sectors()

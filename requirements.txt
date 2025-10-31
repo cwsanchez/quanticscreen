@@ -6,3 +6,4 @@ yfinance
 pandas
 sqlalchemy
 numpy
+streamlit-authenticator

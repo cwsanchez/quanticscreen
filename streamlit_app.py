@@ -1,7 +1,5 @@
 import streamlit as st
 import json
-import copy
-import streamlit_authenticator as stauth
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics, get_metadata, set_metadata
 from processor import get_float, process_stock, DEFAULT_LOGIC
 from tickers import DEFAULT_TICKERS  # Import for validation
@@ -19,43 +17,20 @@ import pytz
 import threading
 
 load_dotenv()
-st.set_page_config(layout="wide")  # Wider page
 
-# Set USERS in .env as JSON, e.g., {\"usernames\": {\"user\": {\"name\": \"User\", \"password\": \"hashed_pass\"}}}; generate hashes via stauth.Hasher.
-# Authentication
-load_dotenv()  # For local .env
-credentials_json = os.getenv('USERS') if os.getenv('USERS') else st.secrets.get('USERS', None)
-if credentials_json:
-    try:
-        credentials = copy.deepcopy(credentials_json) if isinstance(credentials_json, dict) else json.loads(credentials_json)
-    except (json.JSONDecodeError, TypeError):
-        credentials = {"usernames": {}}
-        st.error("Invalid USERS format")
-else:
-    credentials = {"usernames": {}}
+# Simple password authentication
+if 'authenticated' not in st.session_state:
+    password = st.text_input("Enter Password", type="password")
+    if password:
+        if password == os.getenv('APP_PASSWORD'):
+            st.session_state['authenticated'] = True
+            st.success("Authenticated!")
+            st.rerun()
+        else:
+            st.error("Invalid password")
+            st.stop()
 
-# For Streamlit Cloud, set USERS in secrets.toml as TOML (e.g., [USERS.usernames.user] name = 'User' password = 'hashed')
-
-authenticator = stauth.Authenticate(
-    credentials,
-    'quanticscreen_auth',
-    'abcdef',
-    cookie_expiry_days=30
-)
-
-authenticator.login(location='main', key='auth_login')
-
-authentication_status = st.session_state.get("authentication_status")
-name = st.session_state.get("name")
-username = st.session_state.get("username")
-
-if authentication_status is False:
-    st.error('Username/password is incorrect')
-elif authentication_status is None:
-    st.warning('Please enter your username and password')
-
-if authentication_status is not True:
-    st.stop()
+st.set_page_config(page_title="QuantiScreen", page_icon="📊", layout="wide")
 
 init_db()
 
@@ -93,7 +68,6 @@ if need_fetch:
 st.title("Stock Screening Tool")
 
 with st.sidebar:
-    authenticator.logout("Logout", "sidebar")
     dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()))
     if dataset == "Sector":
         sectors = get_unique_sectors()

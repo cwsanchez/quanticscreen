@@ -7,8 +7,6 @@ import pandas as pd
 import numpy as np  # For np.nan
 from seeder import seed
 import io  # For CSV export
-import os
-from dotenv import load_dotenv
 import re
 import time
 from fetcher import StockFetcher
@@ -16,21 +14,7 @@ from datetime import datetime, timedelta, time
 import pytz
 import threading
 
-load_dotenv()
-
-# Simple password authentication
-if 'authenticated' not in st.session_state:
-    password = st.text_input("Enter Password", type="password")
-    if password:
-        if password == os.getenv('APP_PASSWORD'):
-            st.session_state['authenticated'] = True
-            st.success("Authenticated!")
-            st.rerun()
-        else:
-            st.error("Invalid password")
-            st.stop()
-
-st.set_page_config(page_title="QuantiScreen", page_icon="📊", layout="wide")
+st.set_page_config(page_title="QuanticScreen", page_icon="📊", layout="wide")
 
 init_db()
 
@@ -58,16 +42,19 @@ market_open = time(9, 30)
 after_close_before_open = is_weekday and (now_et.time() > market_close or now_et.time() < market_open)
 
 last_fetch_str = get_metadata('last_fetch_time')
+st.write(f"Last fetch time: {last_fetch_str}")
 last_fetch = datetime.fromisoformat(last_fetch_str) if last_fetch_str else None
 need_fetch = last_fetch is None or (datetime.now() - last_fetch > timedelta(hours=12)) or after_close_before_open
 
 if need_fetch:
-    threading.Thread(target=fetch_bg).start()
-    st.spinner("Auto-fetching data in background...")
+    st.write("Starting fetch")
+    with st.spinner("Fetching data..."):
+        threading.Thread(target=fetch_bg).start()
 
-st.title("Stock Screening Tool")
+st.title("QuanticScreen")
 
 with st.sidebar:
+    st.sidebar.title("QuanticScreen")
     dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()))
     if dataset == "Sector":
         sectors = get_unique_sectors()

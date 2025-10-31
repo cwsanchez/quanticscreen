@@ -1,7 +1,7 @@
 import streamlit as st
 import json
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics, get_metadata, set_metadata
-from processor import get_float, process_stock, DEFAULT_LOGIC
+from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS
 from tickers import DEFAULT_TICKERS  # Import for validation
 import pandas as pd
 import numpy as np  # For np.nan
@@ -18,6 +18,12 @@ st.set_page_config(page_title="QuanticScreen", page_icon="📊", layout="wide")
 
 init_db()
 
+# Seed initial data if DB empty
+if len(get_all_tickers()) == 0:
+    with st.spinner("Seeding initial data..."):
+        seed()
+        time.sleep(1)  # Pause for readiness
+
 # Auto-fetch logic
 def fetch_bg():
     fetcher = StockFetcher()
@@ -28,9 +34,12 @@ def fetch_bg():
                 metrics = fetcher.fetch_metrics(t)
                 if metrics:
                     save_metrics(metrics)
-                time.sleep(1)
+                    print(f"Fetched {t}")  # Log progress
+                time.sleep(3)
             except Exception as e:
-                pass  # Log if needed
+                print(f"Error fetching {t}: {e}")  # Log errors
+        else:
+            print(f"Skipped {t} (cached)")  # Log skipped
     set_metadata('last_fetch_time', datetime.now().isoformat())
 
 # Check if need to fetch
@@ -76,17 +85,15 @@ with st.sidebar:
             }
         }
 
-    config_name = st.selectbox('Select Config', list(st.session_state.configs.keys()))
+    preset_options = ["Value", "Growth", "Momentum", "Quality"]
+    custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
+    config_options = preset_options + custom_configs
+    config_name = st.selectbox("Select Config", config_options, index=0)
 
     force_refresh = st.checkbox("Force Refresh (Re-fetch All)")
     num_top = st.slider("Top N Stocks", 1, 50, 20)
     show_all = st.checkbox("Show All (Ignore Top N)")
     exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)")
-    if st.button("Seed Initial Data"):
-        with st.spinner("Seeding data (this may take a while)..."):
-            seed()
-        st.success("Data seeded!")
-        st.rerun()
 
     # Custom Sets
     st.subheader("Create Custom Set")
@@ -115,9 +122,10 @@ with st.sidebar:
                                 metrics = fetcher.fetch_metrics(t)
                                 if metrics:
                                     save_metrics(metrics)
-                                time.sleep(1)
+                                    print(f"Fetched custom {t}")  # Log progress
+                                time.sleep(3)
                             except Exception as e:
-                                pass  # Log if needed
+                                print(f"Error fetching custom {t}: {e}")  # Log errors
                     
                     threading.Thread(target=fetch_custom_bg, args=(unseeded,)).start()
             else:
@@ -131,7 +139,14 @@ results = []
 for ticker in tickers:
     metrics = get_latest_metrics(ticker)
     if metrics:
-        config = st.session_state.configs[config_name]
+        if config_name in PRESETS:
+            config = {
+                'weights': default_weights,
+                'metrics': default_metrics,
+                'logic': PRESETS[config_name]
+            }
+        else:
+            config = st.session_state.configs[config_name]
         processed = process_stock(metrics, config_dict=config)
         results.append(processed)
 
@@ -237,23 +252,5 @@ if top_results:
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button("Export CSV", data=csv, file_name="top_stocks.csv", mime="text/csv")
 
-    # Factor Sub-Lists
-    factors = ['value', 'momentum', 'quality', 'growth']
-    st.subheader("Factor Sub-Lists (Top 5 per Factor)")
-    for factor in factors:
-        with st.expander(f"{factor.capitalize()}"):
-            sorted_by_factor = sorted(results, key=lambda x: x['factor_boosts'].get(factor, 0), reverse=True)
-            top_factor = sorted_by_factor[:5]
-            for res in top_factor:
-                if res['factor_boosts'][factor] > 0:
-                    m = res['metrics']
-                    reason = f"High score due to relevant metrics (e.g., ROE: {round(get_float(m, 'ROE'), 2)}%, Flags: {', '.join(res['flags'])})."
-                    st.markdown(f"- {m['Company Name']} ({m['Ticker']}): {reason}")
-
-    # Warnings
-    st.subheader("Warnings")
-    high_pe = [r['metrics']['Ticker'] for r in results if get_float(r['metrics'], 'P/E') > 30]
-    st.markdown(f"- High P/E stocks needing review: {', '.join(high_pe) if high_pe else 'None'}.")
-    st.markdown("- Monitor debt burdens and market volatility.")
 else:
     st.info("No stocks match the selected dataset. Try seeding data or changing filters.")

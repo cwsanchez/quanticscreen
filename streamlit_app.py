@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import copy
 import streamlit_authenticator as stauth
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics, get_metadata, set_metadata
 from processor import get_float, process_stock, DEFAULT_LOGIC
@@ -26,11 +27,8 @@ load_dotenv()  # For local .env
 credentials_json = os.getenv('USERS') if os.getenv('USERS') else st.secrets.get('USERS', None)
 if credentials_json:
     try:
-        if isinstance(credentials_json, str):
-            credentials = json.loads(credentials_json)
-        else:
-            credentials = credentials_json  # If already dict from st.secrets
-    except json.JSONDecodeError:
+        credentials = copy.deepcopy(credentials_json) if isinstance(credentials_json, dict) else json.loads(credentials_json)
+    except (json.JSONDecodeError, TypeError):
         credentials = {"usernames": {}}
         st.error("Invalid USERS format")
 else:

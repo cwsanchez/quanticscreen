@@ -107,7 +107,7 @@ class StockFetcher:
             except Exception as e:
                 self.logger.error(f"Attempt {attempt+1} failed for {ticker}: {e}")
                 if attempt < 1:
-                    time.sleep(2)
+                    time.sleep(5)
         else:
             self.logger.error(f"All attempts failed for {ticker}")
             return {}

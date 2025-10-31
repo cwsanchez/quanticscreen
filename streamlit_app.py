@@ -22,15 +22,21 @@ st.set_page_config(layout="wide")  # Wider page
 
 # Set USERS in .env as JSON, e.g., {\"usernames\": {\"user\": {\"name\": \"User\", \"password\": \"hashed_pass\"}}}; generate hashes via stauth.Hasher.
 # Authentication
-credentials_json = os.getenv('USERS')
+load_dotenv()  # For local .env
+credentials_json = os.getenv('USERS') if os.getenv('USERS') else st.secrets.get('USERS', None)
 if credentials_json:
     try:
-        credentials = json.loads(credentials_json)
+        if isinstance(credentials_json, str):
+            credentials = json.loads(credentials_json)
+        else:
+            credentials = credentials_json  # If already dict from st.secrets
     except json.JSONDecodeError:
         credentials = {"usernames": {}}
-        st.error("Invalid USERS format in .env")
+        st.error("Invalid USERS format")
 else:
     credentials = {"usernames": {}}
+
+# For Streamlit Cloud, set USERS in secrets.toml as TOML (e.g., [USERS.usernames.user] name = 'User' password = 'hashed')
 
 authenticator = stauth.Authenticate(
     credentials,

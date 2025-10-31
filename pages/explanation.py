@@ -57,5 +57,5 @@ Use the Customize page to create/edit configs:
 
 Data sourced from yfinance, cached locally for speed—seed initial data to populate.
 
-For custom stock filtering: Currently limited to hardcoded DEFAULT_TICKERS; if input ticker not in list, error. To relax: In streamlit_app.py create set button, remove 'valid_tickers = [t for t in input_tickers if t in DEFAULT_TICKERS]', use input_tickers directly; add st.warning if not all seeded ('Unseeded tickers won't show until fetched—run seed or add fetch button'). But don't add fetch yet; note in README as limitation/future.
+Custom sets accept any valid ticker (validated by regex ^[A-Z0-9.-]{1,5}$); unseeded ones are auto-fetched on app load if expired/missing.
 """)

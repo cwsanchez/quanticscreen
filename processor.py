@@ -44,6 +44,7 @@ def process_stock(metrics, config_dict=None):
     """
     # Use the top-level get_float
     pe = get_float(metrics, 'P/E')
+    forward_pe = get_float(metrics, 'Forward P/E')
     roe = get_float(metrics, 'ROE')
     de = get_float(metrics, 'D/E')
     pb = get_float(metrics, 'P/B')
@@ -59,6 +60,12 @@ def process_stock(metrics, config_dict=None):
     low = get_float(metrics, '52W Low')
     debt = get_float(metrics, 'Total Debt')
     p_fcf = get_float(metrics, 'P/FCF')
+    revenue_growth = get_float(metrics, 'Revenue Growth')
+    earnings_growth = get_float(metrics, 'Earnings Growth')
+    rsi = get_float(metrics, 'RSI')
+    beta = get_float(metrics, 'Beta')
+    dividend = get_float(metrics, 'Dividend Yield')
+    avg_volume = get_float(metrics, 'Average Volume')
 
     # Load config or defaults
     if config_dict is None:
@@ -84,18 +91,20 @@ def process_stock(metrics, config_dict=None):
     metric_scores = {}
     if 'P/E' in selected_metrics:
         metric_scores['P/E'] = 10 if pe < 15 else 7 if pe < 20 else 5 if pe < 30 else 2 if pe < 40 else 0
+    if 'Forward P/E' in selected_metrics:
+        metric_scores['Forward P/E'] = 10 if forward_pe < 15 else 7 if forward_pe < 20 else 5 if forward_pe < 30 else 2 if forward_pe < 40 else 0
     if 'ROE' in selected_metrics:
-        metric_scores['ROE'] = 10 if roe > 15 else 7 if roe >= 10 else 5 if roe >= 5 else 0
+        metric_scores['ROE'] = 10 if roe > 20 else 7 if roe >= 15 else 5 if roe >= 10 else 0
     if 'D/E' in selected_metrics:
-        metric_scores['D/E'] = 10 if de < 1 else 7 if de < 1.5 else 5 if de < 2 else 0
+        metric_scores['D/E'] = 10 if de < 0.5 else 7 if de < 1 else 5 if de < 1.5 else 0
     if 'P/B' in selected_metrics:
         metric_scores['P/B'] = 10 if pb < 1.5 else 7 if pb < 2.5 else 5 if pb < 4 else 0
     if 'PEG' in selected_metrics:
         metric_scores['PEG'] = 10 if peg < 1 else 7 if peg < 1.5 else 5 if peg < 2 else 0
     if 'Gross Margin' in selected_metrics:
-        metric_scores['Gross Margin'] = 10 if gross > 40 else 7 if gross >= 30 else 5 if gross >= 20 else 0
+        metric_scores['Gross Margin'] = 10 if gross > 50 else 7 if gross >= 40 else 5 if gross >= 30 else 0
     if 'Net Profit Margin' in selected_metrics:
-        metric_scores['Net Profit Margin'] = 10 if net > 15 else 7 if net >= 10 else 5 if net >= 5 else 0
+        metric_scores['Net Profit Margin'] = 10 if net > 20 else 7 if net >= 15 else 5 if net >= 10 else 0
     if 'FCF % EV TTM' in selected_metrics:
         metric_scores['FCF % EV TTM'] = 10 if fcf_ev > 5 else 7 if fcf_ev >= 3 else 5 if fcf_ev >= 1 else 0
     if 'EBITDA % EV TTM' in selected_metrics:
@@ -104,6 +113,18 @@ def process_stock(metrics, config_dict=None):
         metric_scores['Balance'] = 10 if (cash > 0.2 * mcap) or (price > 0.8 * high) else 0 if (debt > mcap) or (price < 1.1 * low) else 5
     if 'P/FCF' in selected_metrics:
         metric_scores['P/FCF'] = 10 if p_fcf < 15 else 7 if p_fcf < 20 else 5 if p_fcf < 30 else 2 if p_fcf < 40 else 0
+    if 'Revenue Growth' in selected_metrics:
+        metric_scores['Revenue Growth'] = 10 if revenue_growth > 20 else 7 if revenue_growth >= 10 else 5 if revenue_growth >= 5 else 0
+    if 'Earnings Growth' in selected_metrics:
+        metric_scores['Earnings Growth'] = 10 if earnings_growth > 20 else 7 if earnings_growth >= 10 else 5 if earnings_growth >= 5 else 0
+    if 'RSI' in selected_metrics:
+        metric_scores['RSI'] = 10 if 50 < rsi < 70 else 7 if 40 < rsi < 80 else 5 if 30 < rsi < 90 else 0
+    if 'Beta' in selected_metrics:
+        metric_scores['Beta'] = 10 if beta < 1 else 7 if beta < 1.2 else 5 if beta < 1.5 else 0
+    if 'Dividend Yield' in selected_metrics:
+        metric_scores['Dividend Yield'] = 10 if dividend > 3 else 7 if dividend >= 2 else 5 if dividend >= 1 else 0
+    if 'Average Volume' in selected_metrics:
+        metric_scores['Average Volume'] = 10 if avg_volume > 10000000 else 7 if avg_volume > 1000000 else 5 if avg_volume > 100000 else 0
 
     # Step 3: Weighting & Base Score (0-100)
     base_score = sum(metric_scores.get(m, 0) * weights.get(m, 0) for m in selected_metrics) * 10  # Scale to 0-100
@@ -125,14 +146,14 @@ def process_stock(metrics, config_dict=None):
 
     # Step 5: Factor Lens (Extra Boosts, sub-rankings in main.py)
     factor_boosts = {
-        # Identifies undervalued assets with strong equity returns.
-        'value': 10 if (pb < 1.5 and roe > 15) or p_fcf < 15 else 0,
-        # Identifies upward trends with cash support.
-        'momentum': 5 if price > 0.9 * high and get_float(metrics, 'FCF Actual') > 0 else 0,
-        # Identifies high-quality businesses with profitability/low leverage.
-        'quality': 10 if gross > 40 and net > 15 and de < 1 else 0,
-        # Identifies growth at reasonable scale.
-        'growth': 5 if peg < 1 and 1e9 < mcap < 1e11 else 0
+        # Value: Low P/FCF boosts value
+        'value': 20 if p_fcf < 15 or (pb < 1.5 and roe > 15) else 10 if p_fcf < 20 else 0,
+        # Momentum: Price near 52W high, RSI in range, high volume, ROE >15
+        'momentum': 20 if price > 0.9 * high and 50 < rsi < 70 and avg_volume > 1000000 and roe > 15 else 10 if price > 0.8 * high else 0,
+        # Quality: High ROE, low D/E, high margins, dividend >2%, low beta
+        'quality': 20 if roe > 20 and de < 1 and gross > 40 and dividend > 2 and beta < 1 else 10 if roe > 15 and de < 1.5 else 0,
+        # Growth: Low PEG, high revenue/earnings growth, reasonable forward PE, low D/E
+        'growth': 20 if peg < 1.5 and revenue_growth > 10 and earnings_growth > 10 and forward_pe < 25 and de < 1 else 10 if peg < 2 else 0
     }
     factor_boost_total = sum(factor_boosts.values())
 

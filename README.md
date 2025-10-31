@@ -9,10 +9,21 @@ quanticscreen is a Streamlit-based stock screening tool using yfinance for data,
 2. `cd quanticscreen`
 3. Create/activate venv: `python -m venv .venv` then `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix).
 4. Install deps: `pip install -r requirements.txt`
-5. Create .env with `APP_PASSWORD=your_secret`
+5. Create .env with USERS as valid JSON, e.g.:
+   ```
+   USERS={"usernames": {"user": {"name": "User", "password": "hashed_pass"}}}
+   ```
+   To generate hashed passwords, run in Python:
+   ```
+   import streamlit_authenticator as stauth
+   hashed = stauth.Hasher(['your_password']).generate()
+   print(hashed)
+   ```
+   Use one of the generated hashes for the password field.
+
 6. Run: `streamlit run streamlit_app.py`
 
-To remove password (for local instance): Comment out the authentication block in streamlit_app.py (if 'authenticated' not in st.session_state: ... st.stop()).
+To remove password (for local instance): Comment out the authentication block in streamlit_app.py (lines around authenticator.login and the if checks up to st.stop()).
 
 ## Usage
 - Sidebar: Select dataset, config, force refresh, top N, show all, exclude negatives.

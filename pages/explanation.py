@@ -1,77 +1,77 @@
-# pages/explanation.py
 import streamlit as st
 
-st.title("QuantiScreen Explanation")
+st.title("QuanticScreen Explanation")
 
-st.markdown("""
-## App Overview
-QuantiScreen is a Streamlit-based stock screening tool that helps investors identify promising stocks using quantitative metrics and customizable algorithms. It fetches data from yfinance, caches it in a local SQLite database (expiring after 72 hours), and processes stocks on-the-fly.
+st.header("App Overview")
+st.write("""
+QuanticScreen is a Streamlit-based tool for screening and analyzing publicly traded stocks using fundamental metrics from Yahoo Finance (via yfinance). It allows you to filter datasets, customize scoring logic, view ranked results with details, export to CSV, and explore factor sub-lists. The app auto-fetches data for ~1500 prioritized tickers on launch if missing/expired, respecting yfinance limits with rate-limited background threading. Use the sidebar to navigate pages, select datasets/configs, and apply filters. Main features include searchable rankings, column exclusion, and warnings for risks like high P/E.
+""")
 
-### How to Use
-- **Datasets**: Filter stocks by All, Large/Mid/Small Cap (based on Market Cap >$10B, $2-10B, <$2B), Value (low P/B or Undervalued flags), Growth (low PEG or GARP flags), Sector, or Custom sets (user-created ticker lists).
-- **Filters**: Search by ticker/company name, select flags (e.g., Undervalued, Quality Moat), exclude negative flags (Value Trap, Debt Burden), set top N results or show all.
-- **Table**: View ranked stocks with metrics like Score, Price, 52W High/Low, Market Cap (MC), EV, Total Cash/Debt, P/E, ROE%, P/B, PEG, Gross Margin%, FCF/EV%, P/FCF, D/E, Flags, Positives. Export to CSV.
-- **Customize**: Select presets (Value: low P/E/P/B/high ROE; Growth: high revenue/EPS/PEG; Momentum: price/RSI/volume; Quality: ROE/D/E/margins/dividend/beta) or create custom configs (NewConfig1, incrementing). Adjust weights, enable/disable flags with boost sliders.
-- **Auto-Seed/Fetch**: App seeds ~1500 prioritized tickers from ticker.csv via generate_tickers.py on button press. Auto-fetches missing/expired data in background on load (every 12h or after market hours).
-- **Custom Sets**: Create sets from comma-separated tickers; validates and fetches unseeded ones in background.
-- **Factor Sub-Lists**: Top 5 per factor (Value, Momentum, Quality, Growth) based on boosts.
+st.header("Metrics Explained")
+st.write("""
+The app uses these key metrics (fetched or calculated):
+- **P/E (Price/Earnings)**: Trailing P/E ratio—lower suggests undervalued (fallback: marketCap / trailingEps if missing).
+- **ROE (Return on Equity)**: Profitability relative to equity—higher is better (e.g., >15% positive).
+- **P/B (Price/Book)**: Market vs. book value—low (<1.5) indicates undervalued.
+- **PEG (Price/Earnings to Growth)**: P/E adjusted for growth—low (<1.5) for growth at reasonable price (fallback: P/E / (earningsGrowth * 100) if missing).
+- **Gross Margin**: Revenue after COGS as %—high (>40%) shows efficiency.
+- **Net Profit Margin**: Net income as % of revenue—high (>15%) indicates strong profitability.
+- **FCF % EV TTM (Free Cash Flow % Enterprise Value Trailing 12 Months)**: FCF relative to EV—high (>5%) positive for cash generation.
+- **EBITDA % EV TTM**: EBITDA relative to EV—high (>5%) for operational efficiency.
+- **Current Price**: Latest stock price.
+- **52W High/Low**: 52-week range for momentum context.
+- **Market Cap (MC)**: Total market value (left of EV in table).
+- **EV (Enterprise Value)**: Market cap + debt - cash.
+- **Total Cash/Debt**: Balance sheet liquidity/debt levels.
+- **FCF Actual/EBITDA Actual**: Raw $ values for FCF/EBITDA.
+- **P/FCF (Price to Free Cash Flow)**: Market cap / FCF—low indicates value (fallback: calculated if missing, right of FCF % EV).
+- **Beta**: Volatility vs. market—low (<1) for stability.
+- **Dividend Yield**: Annual dividend %—high (>2%) for income focus.
+- **Average Volume**: Trading liquidity.
+- **RSI (Relative Strength Index)**: Momentum oscillator (30-70 normal; calculated from history if needed).
+N/A values are logged and handled gracefully in scoring (treated as 0 or skipped).
+""")
 
-## Metrics Explanation
-Each metric is scored 0-10 based on thresholds, weighted for base score. Lower scores for valuations (P/E, P/B) indicate undervaluation; higher for fundamentals (ROE, margins) indicate strength. N/A treated as 0.
+st.header("Scoring Logic")
+st.write("""
+Stocks are processed on-the-fly:
+- **Base Score**: Weighted average of included metrics (e.g., lower P/E = higher score; customizable weights 0-0.3).
+- **Boosts**: From enabled flags/correlations (e.g., +15% for 'Undervalued' if P/E <15 and ROE >15; sliders for ±10%).
+- **Factor Boosts**: Additional points per factor (value: low P/E/P/B/high ROE; momentum: near 52W high/high EBITDA % EV; quality: high ROE/low D/E/high margins/dividend/low beta; growth: low PEG/high growth/low D/E).
+- **Final Score**: Base + (base * boost %) + factor points. Excludes negatives if selected. Ranked descending.
+Factor sub-lists show top 5 per factor for focused views.
+""")
 
-- **P/E (Price/Earnings)**: Price per earnings share. Lower (<15) indicates undervalued.
-- **ROE% (Return on Equity)**: Profit efficiency using equity. Higher (>15%) better.
-- **D/E (Debt-to-Equity)**: Leverage ratio. Lower (<1) indicates strong balance.
-- **P/B (Price-to-Book)**: Price per book value. Lower (<1.5) suggests undervaluation.
-- **PEG (Price/Earnings to Growth)**: P/E adjusted for growth. Lower (<1) indicates growth at fair price.
-- **Gross Margin%**: Revenue after COGS. Higher (>40%) shows pricing power.
-- **Net Profit Margin%**: Revenue after expenses. Higher (>15%) indicates profitability.
-- **FCF % EV TTM (Free Cash Flow to Enterprise Value)**: Cash flow relative to value. Higher (>5%) shows cash generation.
-- **EBITDA % EV TTM**: Operating earnings to value. Higher (>10%) indicates operational strength.
-- **Balance Score**: Liquidity/momentum (cash >20% MC or price >80% 52W high =10; debt >MC or price <110% low =0; else 5).
-- **P/FCF (Price/Free Cash Flow)**: Price per free cash flow. Lower (<15) indicates undervaluation relative to cash.
-- **Market Cap**: Company size. Used for cap filters.
-- **EV (Enterprise Value)**: Market Cap + Debt - Cash. Used in FCF/EV.
-- **Total Cash/Debt**: Liquidity/leverage. Used in Balance and flags.
-- **52W High/Low**: Price range. Used in momentum.
-- **Forward P/E**: Future P/E estimate. Similar scoring to P/E.
-- **Revenue/Earnings Growth**: Annual growth rates. Higher (>10%) indicates growth potential.
-- **RSI (Relative Strength Index)**: Momentum indicator (50-70 optimal).
-- **Beta**: Volatility vs. market. Lower (<1) indicates stability.
-- **Dividend Yield**: Annual dividend %. Higher (>2%) indicates income.
-- **Average Volume**: Trading liquidity. Higher (>1M) indicates ease of trading.
+st.header("Flags and Correlations")
+st.write("""
+Flags are conditional tags boosting scores if enabled:
+- **Undervalued**: P/E <15 and ROE >15 (+15%).
+- **Strong Balance Sheet**: D/E <1 and cash > debt (+10%).
+- **Quality Moat**: Gross >40%, net profit >15%, FCF % EV >5% (+15%).
+- **GARP (Growth at Reasonable Price)**: PEG <1.5 and P/E <20 (+10%).
+- **High-Risk Growth**: P/E >30 and PEG <1 (+5%).
+- **Value Trap**: P/B <1.5 and ROE <5 (-10%).
+- **Momentum Building**: Price >90% of 52W high and EBITDA % EV >5% (+10%).
+- **Debt Burden**: D/E >2 and FCF % EV <1 (-15%).
+Customize in the Customize page—enable/disable, adjust boosts.
+""")
 
-## Correlations and Flags
-Flags combine metrics to detect patterns, applying boosts/penalties to score and adding labels. Enabled by default with adjustable boosts.
+st.header("Usage Tips")
+st.write("""
+- **Datasets**: 'All' for full ~1500; cap sizes based on market cap; value/growth presets filter by scores; sectors from DB; custom adds any ticker (validated ^[A-Z0-9.-]{1,5}$), auto-fetches unseeded.
+- **Configs/Presets**: Load Value (original focus on undervalued), Growth (high revenue/EPS/PEG), Momentum (price/RSI/volume), Quality (ROE/D/E/margins/dividend/beta). New configs as NewConfig1 (increment); presets read-only—save as new.
+- **Filters/Search**: Flag multi-select, search ticker/company, top N/show all, exclude negatives.
+- **Table**: Sort columns, exclude via multiselect, export CSV.
+- **Auto-Fetch**: Background on load if >12h or after market (US/Eastern, weekdays 4PM-9:30AM); respects limits with 1s sleep.
+- **Reset**: Delete stock_screen.db to re-seed; restart app for changes.
+- **Analysis Pages**: Stock Analysis for individual charts/metrics/ML; Portfolio/Backtesting for simulations (if implemented).
+""")
 
-- **Undervalued (+15%)**: P/E <15 and ROE >15 – Mispriced efficient firms.
-- **Strong Balance Sheet (+10%)**: D/E <1 and Total Cash > Total Debt – Resilient to shocks.
-- **Quality Moat (+15%)**: Gross Margin >40%, Net Profit Margin >15%, FCF % EV >5 – Competitive advantages.
-- **GARP (+10%)**: PEG <1.5 and P/E <20 – Growth at reasonable price.
-- **High-Risk Growth (-10%)**: P/E >30 and PEG <1 – Volatile growth bets.
-- **Value Trap (-10%)**: P/B <1.5 and ROE <5 – Cheap but declining businesses.
-- **Momentum Building (+5%)**: Current Price >90% 52W High and EBITDA % EV >5 – Upward trends.
-- **Debt Burden (-15%)**: D/E >2 and FCF % EV <1 – Leverage straining cash flow.
-
-## Scoring Formula
-Final Score = Base Score + (Base Score * Boosts/100) + Factor Boosts
-
-- **Base Score (0-100)**: Weighted average of metric scores (0-10) scaled up, e.g., P/E 20%, ROE 15%.
-- **Boosts**: Percentage adjustments from enabled flags (e.g., +15% for Undervalued).
-- **Factor Boosts**: Fixed points for alignment (Value: 20 if P/FCF<15 or P/B<1.5+ROE>15; Momentum: 20 if price>90% high + RSI 50-70 + volume>1M + ROE>15; Quality: 20 if ROE>20 + D/E<1 + margins>40 + dividend>2% + beta<1; Growth: 20 if PEG<1.5 + growths>10 + forward P/E<25 + D/E<1).
-
-## Customization
-Create configs on Customize page: Name (NewConfig1+), select metrics, adjust weights (0-0.3, sum~1), toggle flags with boost sliders (+/-10% of default). Presets read-only. Saves to session; export/import JSON.
-
-## Limitations
-- N/A data handled as 0, may skew scores; fallbacks for calculations.
-- Relies on yfinance accuracy; no real-time beyond refresh.
-- Caching expires 72h; auto-fetch may lag.
-- No advanced analytics (e.g., Monte Carlo); basic screening only.
-
-## Tips
-- Restart app to reset DB (delete stock_screen.db) if seeding issues.
-- Expand tickers: Edit ticker.csv or generate_tickers.py for more coverage.
-- Monitor warnings: High P/E stocks need review; debt burdens in rising rates.
-- Use factor sub-lists for style-specific insights.
+st.header("Limitations")
+st.write("""
+- yfinance reliance: Gaps/delays possible; fallbacks for PEG/P/FCF/P/E.
+- No real-time: Refresh for updates; auto-fetch not cron-scheduled.
+- Performance: Large datasets may lag; no pagination yet.
+- N/A Handling: Skipped in scoring; warnings logged.
+- Expandability: Add tickers to CSV and run generate_tickers.py for more.
 """)

@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-QuanticScreen is a Streamlit-based web app for screening and analyzing stocks. It fetches financial data from Yahoo Finance using yfinance, caches metrics in a SQLite database (with 72-hour expiry), and performs on-the-fly processing. Configurations are customizable and stored ephemerally in session state, including metric inclusion/exclusion, weight sliders (0-0.3), and correlation flag boosts (±10% of default). Key features include seeding ~1500 prioritized tickers (large/mid caps from a CSV via generate_tickers.py), dataset filters (All, Cap sizes, Value/Growth presets, Sectors, Custom sets), search by ticker/company, flag filters, exclude negative scores, top N or show all results, sortable ranked table with details (including new Market Cap and P/FCF metrics with fallbacks), CSV export, factor sub-lists (value, momentum, quality, growth), warnings (e.g., high P/E), and algorithm presets (Value, Growth, Momentum, Quality—selectable in Customize with read-only protection for presets). Auto-fetches missing or expired data in the background on app launch (every 12 hours or after market hours). Protected by a single password via .env for security.
+QuanticScreen is a Streamlit-based web app for screening and analyzing stocks. It fetches financial data from Yahoo Finance using yfinance, caches metrics in a SQLite database (with 72-hour expiry), and performs on-the-fly processing. Configurations are customizable and stored ephemerally in session state, including metric inclusion/exclusion, weight sliders (0-0.3), and correlation flag boosts (±10% of default). Key features include seeding ~1500 prioritized tickers (large/mid caps from a CSV via generate_tickers.py), dataset filters (All, Cap sizes, Value/Growth presets, Sectors, Custom sets), search by ticker/company, flag filters, exclude negative scores, top N or show all results, sortable ranked table with details (including new Market Cap and P/FCF metrics with fallbacks), CSV export, factor sub-lists (value, momentum, quality, growth), warnings (e.g., high P/E), and algorithm presets (Value, Growth, Momentum, Quality—selectable in Customize with read-only protection for presets). Auto-fetches missing or expired data in the background on app launch (every 12 hours or after market hours).
 
 ## Setup
 
@@ -10,12 +10,9 @@ QuanticScreen is a Streamlit-based web app for screening and analyzing stocks. I
 2. Navigate to the directory: `cd quanticscreen`
 3. Create and activate a virtual environment: `python -m venv .venv` then `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix/Mac).
 4. Install dependencies: `pip install -r requirements.txt`
-5. Create a `.env` file in the root with `APP_PASSWORD=your_secret_password` for simple authentication.
-6. Run the app: `streamlit run streamlit_app.py`
+5. Run the app: `streamlit run QuanticScreen.py`
 
-To disable the password for local use, comment out the authentication block in `streamlit_app.py` (around the password input and `st.stop()`).
-
-For deployment (e.g., Streamlit Cloud), ensure `.env` is handled via secrets management, but note the app uses a simple password (no advanced auth).
+For deployment (e.g., Streamlit Cloud), ensure environment variables are handled via secrets management if needed.
 
 ## Usage
 
@@ -44,7 +41,6 @@ For deployment (e.g., Streamlit Cloud), ensure `.env` is handled via secrets man
 - Data may have N/A for some metrics (e.g., PEG/P/FCF use fallbacks; logs warnings).
 - Relies on yfinance—occasional gaps or delays; no real-time beyond manual refresh.
 - Custom sets accept any valid ticker (regex-validated), but unseeded ones auto-fetch slowly.
-- Simple password auth—suitable for personal use; comment out for local.
 - Performance: 1500 tickers may lag on low-end hosts; pagination not yet implemented.
 
 ## Contributing

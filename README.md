@@ -1,40 +1,52 @@
-# quanticscreen
+# QuanticScreen
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-quanticscreen is a Streamlit-based stock screening tool using yfinance for data, SQLite for caching metrics (72h expiry), on-the-fly processing with customizable configs stored ephemerally in session state (metrics include/exclude, weight sliders 0-0.3, correlation flags enable/disable with boost sliders +/-10% of default). Features: ~1500 tickers (prioritized from ticker.csv via generate_tickers.py), new metrics (Market Cap left of EV, P/FCF right of FCF/EV% with fallbacks/calculations), auto-fetch missing/expired data on app load (every 12h or after market hours via background threading), algorithm presets (Value/original, Growth/high revenue/EPS/PEG, Momentum/price/RSI/volume, Quality/ROE/D/E/margins/dividend/beta—selectable in Customize with read-only protection), custom configs start as NewConfig1 (increment, no overwrite presets), UI bug fixes (rerun on updates), dataset filters (All/Cap sizes/Value/Growth/Sector/Custom sets), search, flag filters, exclude negatives, top N/show all, ranked table with details, CSV export, factor sub-lists (value/momentum/quality/growth), warnings (e.g., high P/E). Simple password protection via APP_PASSWORD in .env.
+QuanticScreen is a Streamlit-based web app for screening and analyzing stocks. It fetches financial data from Yahoo Finance using yfinance, caches metrics in a SQLite database (with 72-hour expiry), and performs on-the-fly processing. Configurations are customizable and stored ephemerally in session state, including metric inclusion/exclusion, weight sliders (0-0.3), and correlation flag boosts (±10% of default). Key features include seeding ~1500 prioritized tickers (large/mid caps from a CSV via generate_tickers.py), dataset filters (All, Cap sizes, Value/Growth presets, Sectors, Custom sets), search by ticker/company, flag filters, exclude negative scores, top N or show all results, sortable ranked table with details (including new Market Cap and P/FCF metrics with fallbacks), CSV export, factor sub-lists (value, momentum, quality, growth), warnings (e.g., high P/E), and algorithm presets (Value, Growth, Momentum, Quality—selectable in Customize with read-only protection for presets). Auto-fetches missing or expired data in the background on app launch (every 12 hours or after market hours). Protected by a single password via .env for security.
 
 ## Setup
-1. Clone repo: `git clone https://github.com/your-repo/quanticscreen.git`
-2. `cd quanticscreen`
-3. Create/activate venv: `python -m venv .venv` then `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix).
-4. Install deps: `pip install -r requirements.txt`
-5. Create .env with APP_PASSWORD, e.g.:
-   ```
-   APP_PASSWORD=your_secret_password
-   ```
-   Copy from .env.example and set your password.
 
-6. Run: `streamlit run streamlit_app.py`
+1. Clone the repo: `git clone https://github.com/cwsanchez/quanticscreen.git`
+2. Navigate to the directory: `cd quanticscreen`
+3. Create and activate a virtual environment: `python -m venv .venv` then `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix/Mac).
+4. Install dependencies: `pip install -r requirements.txt`
+5. Create a `.env` file in the root with `APP_PASSWORD=your_secret_password` for simple authentication.
+6. Run the app: `streamlit run streamlit_app.py`
+
+To disable the password for local use, comment out the authentication block in `streamlit_app.py` (around the password input and `st.stop()`).
+
+For deployment (e.g., Streamlit Cloud), ensure `.env` is handled via secrets management, but note the app uses a simple password (no advanced auth).
 
 ## Usage
-- **Authentication**: Enter the APP_PASSWORD from .env to access the app.
-- **Sidebar**: Select dataset (All, Large/Mid/Small Cap, Value, Growth, Sector, Custom sets), config (presets or custom), force refresh, top N stocks, show all, exclude negatives.
-- **Main**: Search by ticker/company, filter by flags, view ranked table with metrics (including Market Cap, EV, P/FCF), CSV export.
-- **Pages**: Customize (select presets like Value, Growth, Momentum, Quality; create custom configs starting as NewConfig1), Explanation (metrics, correlations, scoring).
-- **Seeding**: Use "Seed Initial Data" button to populate ~1500 tickers from prioritized CSV.
-- **Auto-fetch**: App automatically fetches missing/expired data in background on load (every 12h or after market hours).
-- **Custom Sets**: Create sets of tickers for personalized screening.
-- **Factor Sub-lists**: View top 5 stocks per factor (value, momentum, quality, growth).
-- **Warnings**: Highlights high P/E stocks and other cautions.
-- Restart app or delete stock_screen.db to reset DB if needed.
+
+- **Sidebar Navigation and Controls**:
+  - Select pages: QuanticScreen (main dashboard), Stock Analysis (technical/fundamental/predictive), Portfolio, Backtesting, Customize (edit configs/presets), Explanation (metrics/logic details).
+  - Dataset selection: All seeded tickers, by market cap size, value/growth presets, sectors, or custom sets (add any valid ticker; auto-fetches if unseeded).
+  - Config: Choose algorithm presets (Value for undervalued stocks, Growth for high-potential, Momentum for trends, Quality for stable) or custom—new configs start as NewConfig1 to avoid overwriting.
+  - Refresh: Force data refresh; auto-handles in background.
+  - Filters: Top N results, show all, exclude negatives.
+
+- **Main Dashboard**:
+  - Search by ticker or company name.
+  - Flag filters for conditions like Undervalued, Quality Moat.
+  - Ranked table: Sortable by score/metrics, with columns for Company (Ticker), Score, P/E, ROE, P/B, PEG, Gross Margin, FCF % EV TTM, P/FCF, D/E, Flags, Positives.
+  - Export ranked results as CSV.
+  - Factor sub-lists: Top 5 per factor (expandable).
+  - Warnings: Highlights high-risk items like high P/E.
+
+- **Stock Analysis Page**: Enter a symbol for technical (charts/indicators), fundamental (ratios/metrics), or predictive (ML-based forecasts) analysis.
+- **Customize Page**: Load presets or create/edit configs with sliders; presets are read-only—save as new to avoid overwrites.
+- **Explanation Page**: Details on metrics, scoring logic, flags, and app usage.
+- **Seeding and Fetching**: App auto-seeds ~1500 tickers on first run or if DB empty; fetches only missing/expired data to respect yfinance limits. Delete `stock_screen.db` to reset.
 
 ## Limitations
-Data may have N/A for some metrics (with fallback calculations for P/E, P/FCF). Relies on yfinance for data accuracy. No real-time updates beyond refresh. Custom sets fetch unseeded tickers in background.
+
+- Data may have N/A for some metrics (e.g., PEG/P/FCF use fallbacks; logs warnings).
+- Relies on yfinance—occasional gaps or delays; no real-time beyond manual refresh.
+- Custom sets accept any valid ticker (regex-validated), but unseeded ones auto-fetch slowly.
+- Simple password auth—suitable for personal use; comment out for local.
+- Performance: 1500 tickers may lag on low-end hosts; pagination not yet implemented.
 
 ## Contributing
-Fork and PR; report issues on GitHub.
 
-## Screenshots
-![Main UI](path/to/main_ui_screenshot.png)
-![Customize Page](path/to/customize_screenshot.png)
+Fork the repo and submit pull requests. Report issues on GitHub. Contributions welcome for new metrics, presets, or optimizations.

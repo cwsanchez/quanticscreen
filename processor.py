@@ -35,6 +35,49 @@ DEFAULT_LOGIC = {
     'Debt Burden': {'enabled': True, 'boost': -15}
 }
 
+PRESETS = {
+    'Value': {
+        'Undervalued': {'enabled': True, 'boost': 20},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 15},
+        'Quality Moat': {'enabled': True, 'boost': 10},
+        'GARP': {'enabled': True, 'boost': 5},
+        'High-Risk Growth': {'enabled': True, 'boost': -5},
+        'Value Trap': {'enabled': True, 'boost': -5},
+        'Momentum Building': {'enabled': True, 'boost': 0},
+        'Debt Burden': {'enabled': True, 'boost': -20}
+    },
+    'Growth': {
+        'Undervalued': {'enabled': True, 'boost': 5},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 5},
+        'Quality Moat': {'enabled': True, 'boost': 5},
+        'GARP': {'enabled': True, 'boost': 20},
+        'High-Risk Growth': {'enabled': True, 'boost': 10},
+        'Value Trap': {'enabled': True, 'boost': -15},
+        'Momentum Building': {'enabled': True, 'boost': 10},
+        'Debt Burden': {'enabled': True, 'boost': -10}
+    },
+    'Momentum': {
+        'Undervalued': {'enabled': True, 'boost': 5},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 5},
+        'Quality Moat': {'enabled': True, 'boost': 5},
+        'GARP': {'enabled': True, 'boost': 5},
+        'High-Risk Growth': {'enabled': True, 'boost': 5},
+        'Value Trap': {'enabled': True, 'boost': -15},
+        'Momentum Building': {'enabled': True, 'boost': 20},
+        'Debt Burden': {'enabled': True, 'boost': -10}
+    },
+    'Quality': {
+        'Undervalued': {'enabled': True, 'boost': 10},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 20},
+        'Quality Moat': {'enabled': True, 'boost': 20},
+        'GARP': {'enabled': True, 'boost': 5},
+        'High-Risk Growth': {'enabled': True, 'boost': -15},
+        'Value Trap': {'enabled': True, 'boost': -15},
+        'Momentum Building': {'enabled': True, 'boost': 5},
+        'Debt Burden': {'enabled': True, 'boost': -20}
+    }
+}
+
 def process_stock(metrics, config_dict=None):
     """
     Processes a single stock's metrics per algorithm steps 2-5.

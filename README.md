@@ -22,6 +22,7 @@ quanticscreen is a Streamlit-based stock screening tool using yfinance for data,
    Use one of the generated hashes for the password field.
 
 6. Run: `streamlit run streamlit_app.py`
+Set USERS in .env as JSON, e.g., {\"usernames\": {\"user\": {\"name\": \"User\", \"password\": \"hashed_pass\"}}}; generate hashes via stauth.Hasher.
 
 To remove password (for local instance): Comment out the authentication block in streamlit_app.py (lines around authenticator.login and the if checks up to st.stop()).
 

@@ -10,7 +10,7 @@ QuanticScreen is a Streamlit-based web app for screening and analyzing stocks. I
 2. Navigate to the directory: `cd quanticscreen`
 3. Create and activate a virtual environment: `python -m venv .venv` then `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix/Mac).
 4. Install dependencies: `pip install -r requirements.txt`
-5. Run the app: `streamlit run QuanticScreen.py`
+5. Run the app: `streamlit run QuanticScreen.py --server.fileWatcherType none`
 
 ## Usage
 

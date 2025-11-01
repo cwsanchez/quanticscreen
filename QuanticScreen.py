@@ -10,9 +10,14 @@ import io  # For CSV export
 import re
 import time
 from fetcher import StockFetcher
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
+from datetime import time as dt_time
 import pytz
 import threading
+
+# Define default weights and metrics at the top to avoid NameError on navigation
+default_weights = {'P/E': 0.2, 'ROE': 0.2, 'P/B': 0.1, 'PEG': 0.15, 'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.1, 'EBITDA % EV TTM': 0.05}
+default_metrics = list(default_weights.keys())
 
 st.set_page_config(page_title="QuanticScreen", page_icon="📊", layout="wide")
 
@@ -46,8 +51,8 @@ def fetch_bg():
 et_tz = pytz.timezone('US/Eastern')
 now_et = datetime.now(et_tz)
 is_weekday = now_et.weekday() < 5
-market_close = time(16, 0)
-market_open = time(9, 30)
+market_close = dt_time(16, 0)
+market_open = dt_time(9, 30)
 after_close_before_open = is_weekday and (now_et.time() > market_close or now_et.time() < market_open)
 
 last_fetch_str = get_metadata('last_fetch_time')
@@ -71,15 +76,7 @@ with st.sidebar:
 
     # Initialize configs in session state
     if 'configs' not in st.session_state:
-        default_weights = {'P/E': 0.2, 'ROE': 0.2, 'P/B': 0.1, 'PEG': 0.15, 'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.1, 'EBITDA % EV TTM': 0.05}
-        default_metrics = list(default_weights.keys())
-        st.session_state.configs = {
-            'default': {
-                'weights': default_weights,
-                'metrics': default_metrics,
-                'logic': DEFAULT_LOGIC
-            }
-        }
+        st.session_state.configs = {}
 
     preset_options = ["Overall", "Value", "Growth", "Momentum", "Quality"]
     custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]

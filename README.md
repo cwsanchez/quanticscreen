@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-QuanticScreen is a Streamlit-based web app for screening and analyzing stocks. It fetches financial data from Yahoo Finance using yfinance, caches metrics in a SQLite database (with 72-hour expiry), and performs on-the-fly processing. Configurations are customizable and stored ephemerally in session state, including metric inclusion/exclusion, weight sliders (0-0.3), and correlation flag boosts (±10% of default). Key features include auto-seeding ~700 prioritized tickers (large/mid caps from a CSV via generate_tickers.py) on launch, dataset filters (All, Cap sizes, Value/Growth presets, Sectors, Custom sets), search by ticker/company, flag filters, exclude negative scores, top N or show all results, sortable ranked table with details (including Market Cap and P/FCF metrics with fallbacks), CSV export, and algorithm presets (Overall, Value, Growth, Momentum, Quality—selectable on main page with read-only protection for presets in Customize). Auto-fetches missing or expired data in the background on app launch (every 12 hours or after market hours). No password—use private links for access.
+QuanticScreen is a Streamlit-based web app for screening and analyzing stocks. It fetches financial data from Yahoo Finance using yfinance, caches metrics in a database (supports Neon/external PostgreSQL via DATABASE_URL env var, falls back to SQLite with 72-hour expiry), and performs on-the-fly processing. Configurations are customizable and stored ephemerally in session state, including metric inclusion/exclusion, weight sliders (0-0.3), and correlation flag boosts (±10% of default). Key features include dataset filters (All from DB, Cap sizes, Value/Growth presets, Sectors, Custom sets), search by ticker/company, flag filters, exclude negative scores, top N or show all results, sortable ranked table with details (including Market Cap and P/FCF metrics with fallbacks), CSV export, and algorithm presets (Overall, Value, Growth, Momentum, Quality—selectable on main page with read-only protection for presets in Customize). Background polling fetches stale data (>72h) every 15 mins during market hours (9:30 AM - 1:30 PM ET weekdays, prioritizing oldest). If DB fails/empty, shows 4 sample stocks (AAPL, MSFT, GOOGL, TSLA) with mock metrics. No initial seeding—use manual seeding script. No password—use private links for access.
 
 ## Setup
 
@@ -29,14 +29,20 @@ QuanticScreen is a Streamlit-based web app for screening and analyzing stocks. I
 - **Stock Analysis Page**: Enter a symbol for technical (charts/indicators), fundamental (ratios/metrics), or predictive (ML-based forecasts) analysis.
 - **Customize Page**: Load presets or create/edit configs with sliders; presets are read-only—save as new to avoid overwrites.
 - **Explanation Page**: Details on metrics, scoring logic, flags, and app usage.
-- **Seeding and Fetching**: App auto-seeds ~700 tickers on launch if DB empty; fetches only missing/expired data with rate limiting (2s per ticker, 20s per batch) to respect yfinance limits. Delete `stock_screen.db` to reset.
+- **Seeding and Fetching**: No auto-seeding. You must manually seed ticker data into the database (edit TICKERS_STR in script). Background polling fetches stale data (>72h) every 15 mins during market hours (9:30 AM - 1:30 PM ET weekdays), prioritizing oldest, in batches of 5-10 with 5-10s sleeps. Custom sets queue new tickers for fetch (limited to 20/hour). If DB fails/empty, shows samples. Delete DB file or set DATABASE_URL for external DB.
+
+## Summary of Changes
+
+- **DB Support**: Added support for external DB (e.g., Neon PostgreSQL) via `DATABASE_URL` env var. Retries connection 3x with 5-10s sleeps; falls back to SQLite if fails.
+- **No Initial Seeding**: Removed auto-seeding on launch. DB empty/fail shows 4 samples (AAPL, MSFT, GOOGL, TSLA) with mock metrics + warning.
+- **Background Fetching**: Polls every 15 mins for stale data (>72h), updates during market hours (9:30 AM - 1:30 PM ET weekdays) if last fetch < today's open, prioritizing oldest in 5-10 batches with 5-10s sleeps.
 
 ## Limitations
 
 - Data may have N/A for some metrics (e.g., PEG/P/FCF use fallbacks; logs warnings).
 - Relies on yfinance—occasional gaps or delays; no real-time beyond manual refresh.
-- Custom sets accept any valid ticker (regex-validated), but unseeded ones auto-fetch slowly.
-- Performance: 700 tickers keeps it snappy; expand CSV and regenerate for more (but watch rate limits).
+- Custom sets accept any valid ticker (regex-validated), but unseeded ones queued for fetch.
+- Performance: DB size affects speed; use external DB for scalability.
 - No password—use private deployment links for security.
 
 ## Contributing

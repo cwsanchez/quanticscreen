@@ -1,14 +1,13 @@
 import streamlit as st
 import json
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics, get_metadata, set_metadata
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers
 from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS
-from tickers import DEFAULT_TICKERS  # Import for validation
 import pandas as pd
 import numpy as np  # For np.nan
-from seeder import seed
 import io  # For CSV export
 import re
 import time
+import random
 from fetcher import StockFetcher
 from datetime import datetime, timedelta
 from datetime import time as dt_time
@@ -23,47 +22,157 @@ st.set_page_config(page_title="QuanticScreen", page_icon="📊", layout="wide")
 
 init_db()
 
-# Seed initial data if DB empty
-if len(get_all_tickers()) == 0:
-    with st.spinner("Seeding initial data..."):
-        seed()
-        time.sleep(1)  # Pause for readiness
+# Sample data if DB empty
+sample_metrics = [
+    {
+        'Ticker': 'AAPL',
+        'Company Name': 'Apple Inc.',
+        'Industry': 'Technology',
+        'Sector': 'Technology',
+        'P/E': 28.5,
+        'ROE': 0.25,
+        'D/E': 0.5,
+        'P/B': 5.2,
+        'PEG': 1.8,
+        'Gross Margin': 0.38,
+        'Net Profit Margin': 0.22,
+        'FCF % EV TTM': 0.15,
+        'EBITDA % EV TTM': 0.20,
+        'Current Price': 150.0,
+        '52W High': 200.0,
+        '52W Low': 120.0,
+        'Market Cap': 2500000000000,
+        'EV': 2600000000000,
+        'Total Cash': 50000000000,
+        'Total Debt': 100000000000,
+        'FCF Actual': 80000000000,
+        'EBITDA Actual': 100000000000,
+        'P/FCF': 25.0,
+        'fetch_timestamp': datetime.now().isoformat(),
+        'fetch_id': None
+    },
+    {
+        'Ticker': 'MSFT',
+        'Company Name': 'Microsoft Corporation',
+        'Industry': 'Technology',
+        'Sector': 'Technology',
+        'P/E': 32.0,
+        'ROE': 0.30,
+        'D/E': 0.4,
+        'P/B': 12.0,
+        'PEG': 2.0,
+        'Gross Margin': 0.70,
+        'Net Profit Margin': 0.35,
+        'FCF % EV TTM': 0.18,
+        'EBITDA % EV TTM': 0.25,
+        'Current Price': 300.0,
+        '52W High': 400.0,
+        '52W Low': 250.0,
+        'Market Cap': 2200000000000,
+        'EV': 2300000000000,
+        'Total Cash': 80000000000,
+        'Total Debt': 60000000000,
+        'FCF Actual': 60000000000,
+        'EBITDA Actual': 90000000000,
+        'P/FCF': 30.0,
+        'fetch_timestamp': datetime.now().isoformat(),
+        'fetch_id': None
+    },
+    {
+        'Ticker': 'GOOGL',
+        'Company Name': 'Alphabet Inc.',
+        'Industry': 'Technology',
+        'Sector': 'Technology',
+        'P/E': 25.0,
+        'ROE': 0.20,
+        'D/E': 0.1,
+        'P/B': 4.5,
+        'PEG': 1.5,
+        'Gross Margin': 0.55,
+        'Net Profit Margin': 0.20,
+        'FCF % EV TTM': 0.12,
+        'EBITDA % EV TTM': 0.18,
+        'Current Price': 2800.0,
+        '52W High': 3000.0,
+        '52W Low': 2000.0,
+        'Market Cap': 1800000000000,
+        'EV': 1850000000000,
+        'Total Cash': 100000000000,
+        'Total Debt': 20000000000,
+        'FCF Actual': 50000000000,
+        'EBITDA Actual': 80000000000,
+        'P/FCF': 28.0,
+        'fetch_timestamp': datetime.now().isoformat(),
+        'fetch_id': None
+    },
+    {
+        'Ticker': 'TSLA',
+        'Company Name': 'Tesla Inc.',
+        'Industry': 'Automotive',
+        'Sector': 'Consumer Discretionary',
+        'P/E': 50.0,
+        'ROE': 0.15,
+        'D/E': 0.8,
+        'P/B': 8.0,
+        'PEG': 3.0,
+        'Gross Margin': 0.18,
+        'Net Profit Margin': 0.08,
+        'FCF % EV TTM': 0.05,
+        'EBITDA % EV TTM': 0.10,
+        'Current Price': 250.0,
+        '52W High': 300.0,
+        '52W Low': 150.0,
+        'Market Cap': 800000000000,
+        'EV': 850000000000,
+        'Total Cash': 20000000000,
+        'Total Debt': 5000000000,
+        'FCF Actual': 10000000000,
+        'EBITDA Actual': 15000000000,
+        'P/FCF': 40.0,
+        'fetch_timestamp': datetime.now().isoformat(),
+        'fetch_id': None
+    }
+]
 
-# Auto-fetch logic
+db_empty = len(get_all_tickers()) == 0
+if db_empty:
+    st.warning("DB failed/empty. Retried. Showing samples. Restart to retry.")
+
+# Auto-fetch logic with polling
 def fetch_bg():
-    fetcher = StockFetcher()
-    tickers = DEFAULT_TICKERS  # or get_all_tickers() + custom if needed
-    for t in tickers:
-        if not get_latest_metrics(t):
-            try:
-                metrics = fetcher.fetch_metrics(t)
-                if metrics:
-                    save_metrics(metrics)
-                    print(f"Fetched {t}")  # Log progress
-                time.sleep(2)
-            except Exception as e:
-                print(f"Error fetching {t}: {e}")  # Log errors
-        else:
-            print(f"Skipped {t} (cached)")  # Log skipped
-    set_metadata('last_fetch_time', datetime.now().isoformat())
+    et_tz = pytz.timezone('US/Eastern')
+    now_et = datetime.now(et_tz)
+    is_weekday = now_et.weekday() < 5
+    market_open = dt_time(9, 30)
+    current_time = now_et.time()
+    market_open_dt = datetime.combine(now_et.date(), market_open).replace(tzinfo=et_tz)
+    market_update_end = market_open_dt + timedelta(hours=4)
 
-# Check if need to fetch
-et_tz = pytz.timezone('US/Eastern')
-now_et = datetime.now(et_tz)
-is_weekday = now_et.weekday() < 5
-market_close = dt_time(16, 0)
-market_open = dt_time(9, 30)
-after_close_before_open = is_weekday and (now_et.time() > market_close or now_et.time() < market_open)
+    if is_weekday and current_time > market_open and current_time < market_update_end.time():
+        last_fetch_str = get_metadata('last_fetch_time')
+        last_fetch = datetime.fromisoformat(last_fetch_str).replace(tzinfo=et_tz) if last_fetch_str else None
+        if last_fetch is None or last_fetch < market_open_dt:
+            stale_tickers = get_stale_tickers()
+            if stale_tickers:
+                fetcher = StockFetcher()
+                batch_size = random.randint(5, 10)
+                for i in range(0, len(stale_tickers), batch_size):
+                    batch = stale_tickers[i:i + batch_size]
+                    for t in batch:
+                        try:
+                            metrics = fetcher.fetch_metrics(t)
+                            if metrics:
+                                save_metrics(metrics)
+                        except Exception as e:
+                            print(f"Error fetching {t}: {e}")
+                        time.sleep(random.randint(5, 10))
+                    time.sleep(random.randint(5, 10))
+                set_metadata('last_fetch_time', datetime.now().isoformat())
+    # Schedule next poll in 15 mins
+    threading.Timer(15 * 60, fetch_bg).start()
 
-last_fetch_str = get_metadata('last_fetch_time')
-st.write(f"Last fetch time: {last_fetch_str}")
-last_fetch = datetime.fromisoformat(last_fetch_str) if last_fetch_str else None
-need_fetch = last_fetch is None or (datetime.now() - last_fetch > timedelta(hours=12)) or after_close_before_open
-
-if need_fetch:
-    st.write("Starting fetch")
-    with st.spinner("Fetching data..."):
-        threading.Thread(target=fetch_bg).start()
+# Start polling thread
+threading.Thread(target=fetch_bg, daemon=True).start()
 
 st.title("QuanticScreen")
 
@@ -93,6 +202,9 @@ with st.sidebar:
     if st.button("Create Set"):
         if set_name and ticker_input:
             input_tickers = [t.strip().upper() for t in ticker_input.split(',')]
+            if len(input_tickers) > 50:
+                input_tickers = input_tickers[:50]
+                st.warning("Input capped to 50 tickers.")
             valid_tickers = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t)]
             if valid_tickers:
                 if 'custom_sets' not in st.session_state:
@@ -100,46 +212,36 @@ with st.sidebar:
                 st.session_state.custom_sets[set_name] = valid_tickers
                 st.success(f"Created set '{set_name}' with {len(valid_tickers)} valid tickers.")
                 st.rerun()
-                
-                # Check for unseeded tickers and fetch in background
+
+                # Check for unseeded tickers
                 unseeded = [t for t in valid_tickers if not get_latest_metrics(t)]
                 if unseeded:
-                    st.warning(f"Unseeded tickers will be fetched in background: {', '.join(unseeded)}")
-                    
-                    def fetch_custom_bg(unseeded):
-                        fetcher = StockFetcher()
-                        for t in unseeded:
-                            try:
-                                metrics = fetcher.fetch_metrics(t)
-                                if metrics:
-                                    save_metrics(metrics)
-                                    print(f"Fetched custom {t}")  # Log progress
-                                time.sleep(2)
-                            except Exception as e:
-                                print(f"Error fetching custom {t}: {e}")  # Log errors
-                    
-                    threading.Thread(target=fetch_custom_bg, args=(unseeded,)).start()
+                    st.warning(f"New tickers queued for fetch: {', '.join(unseeded)}. Fetching limited to 20/hour, may take time.")
             else:
                 st.error("No valid tickers provided. Tickers should be 1-5 uppercase letters, optionally with '.' or '-'.")
         else:
             st.error("Provide a name and tickers.")
 
-# Get all tickers and process on the fly
-tickers = get_all_tickers()
+# Get metrics and process on the fly
+if db_empty:
+    metrics_list = sample_metrics
+else:
+    tickers = get_all_tickers()
+    metrics_list = [get_latest_metrics(t) for t in tickers]
+    metrics_list = [m for m in metrics_list if m]
+
 results = []
-for ticker in tickers:
-    metrics = get_latest_metrics(ticker)
-    if metrics:
-        if config_name in PRESETS:
-            config = {
-                'weights': default_weights,
-                'metrics': default_metrics,
-                'logic': PRESETS[config_name]
-            }
-        else:
-            config = st.session_state.configs[config_name]
-        processed = process_stock(metrics, config_dict=config)
-        results.append(processed)
+for metrics in metrics_list:
+    if config_name in PRESETS:
+        config = {
+            'weights': default_weights,
+            'metrics': default_metrics,
+            'logic': PRESETS[config_name]
+        }
+    else:
+        config = st.session_state.configs[config_name]
+    processed = process_stock(metrics, config_dict=config)
+    results.append(processed)
 
 # Apply filters based on dataset
 if dataset in st.session_state.get('custom_sets', {}):

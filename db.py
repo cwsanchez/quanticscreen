@@ -2,11 +2,34 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.sql import text
 from datetime import datetime, timedelta
 import json
+import os
+import time
+import random
 
-DB_NAME = 'stock_screen.db'
-engine = create_engine(f'sqlite:///{DB_NAME}', echo=False)
+DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///stock_screen.db')
+
+# Wrap engine creation with retries
+retries = 3
+for attempt in range(retries):
+    try:
+        engine = create_engine(DATABASE_URL, echo=False)
+        # Test connection
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        break
+    except Exception as e:
+        if attempt < retries - 1:
+            sleep_time = random.randint(5, 10)
+            print(f"DB connection attempt {attempt + 1} failed: {e}. Retrying in {sleep_time}s...")
+            time.sleep(sleep_time)
+        else:
+            print(f"DB connection failed after {retries} attempts: {e}. Falling back to SQLite.")
+            DATABASE_URL = 'sqlite:///stock_screen.db'
+            engine = create_engine(DATABASE_URL, echo=False)
+
 Base = declarative_base()
 Session = sessionmaker(bind=engine)
 
@@ -238,3 +261,13 @@ def get_unique_sectors():
     sectors = [s[0] for s in session.query(Stock.sector).distinct().all() if s[0] != 'N/A']
     session.close()
     return sorted(sectors)
+
+def get_stale_tickers():
+    """
+    Returns list of tickers with data older than 72 hours, ordered by oldest first.
+    """
+    session = Session()
+    cutoff = datetime.now() - timedelta(hours=72)
+    stale = session.query(MetricFetch.ticker).filter(MetricFetch.fetch_timestamp < cutoff).order_by(MetricFetch.fetch_timestamp).all()
+    session.close()
+    return [t[0] for t in stale]

@@ -4,7 +4,7 @@ st.title("QuanticScreen Explanation")
 
 st.header("App Overview")
 st.write("""
-QuanticScreen is a Streamlit-based tool for screening and analyzing publicly traded stocks using fundamental metrics from Yahoo Finance (via yfinance). It allows you to filter datasets, customize scoring logic, view ranked results with details, export to CSV, and explore factor sub-lists. The app auto-fetches data for ~1500 prioritized tickers on launch if missing/expired, respecting yfinance limits with rate-limited background threading. Use the sidebar to navigate pages, select datasets/configs, and apply filters. Main features include searchable rankings, column exclusion, and warnings for risks like high P/E.
+QuanticScreen is a Streamlit-based tool for screening and analyzing publicly traded stocks using fundamental metrics from Yahoo Finance (via yfinance). It allows you to filter datasets, customize scoring logic, view ranked results with details, export to CSV, and explore factor sub-lists. The app auto-fetches data for ~700 prioritized tickers on launch if missing/expired, respecting yfinance limits with rate-limited background threading. Use the sidebar to navigate pages, select datasets/configs, and apply filters. Main features include searchable rankings, column exclusion, and warnings for risks like high P/E.
 """)
 
 st.header("Metrics Explained")
@@ -58,8 +58,8 @@ Customize in the Customize page—enable/disable, adjust boosts.
 
 st.header("Usage Tips")
 st.write("""
-- **Datasets**: 'All' for full ~1500; cap sizes based on market cap; value/growth presets filter by scores; sectors from DB; custom adds any ticker (validated ^[A-Z0-9.-]{1,5}$), auto-fetches unseeded.
-- **Configs/Presets**: Load Value (original focus on undervalued), Growth (high revenue/EPS/PEG), Momentum (price/RSI/volume), Quality (ROE/D/E/margins/dividend/beta). New configs as NewConfig1 (increment); presets read-only—save as new.
+- **Datasets**: 'All' for full ~700; cap sizes based on market cap; value/growth presets filter by scores; sectors from DB; custom adds any ticker (validated ^[A-Z0-9.-]{1,5}$), auto-fetches unseeded.
+- **Configs/Presets**: Load Overall (balanced default with broad boosts across value/quality/growth/momentum, penalizing risks), Value (focus on undervalued), Growth (high revenue/EPS/PEG), Momentum (price/RSI/volume), Quality (ROE/D/E/margins/dividend/beta). New configs as NewConfig1 (increment); presets read-only—save as new.
 - **Filters/Search**: Flag multi-select, search ticker/company, top N/show all, exclude negatives.
 - **Table**: Sort columns, exclude via multiselect, export CSV.
 - **Auto-Fetch**: Background on load if >12h or after market (US/Eastern, weekdays 4PM-9:30AM); respects limits with 1s sleep.

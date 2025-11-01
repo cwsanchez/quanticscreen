@@ -10,7 +10,7 @@ def batches(l, n):
 
 def seed(force=False):
     """
-    Seeds the DB with top 500 tickers in batches of 20.
+    Seeds the DB with top 700 tickers in batches of 30.
     Only re-fetches if cache >72h old or no data, unless force=True.
     """
     if force:
@@ -23,14 +23,14 @@ def seed(force=False):
     all_tickers = DEFAULT_TICKERS
 
     fetcher = StockFetcher()
-    for batch in batches(all_tickers, 20):
+    for batch in batches(all_tickers, 30):
         for ticker in batch:
             if force or not get_latest_metrics(ticker):
                 metrics = fetcher.fetch_metrics(ticker)
                 if metrics:
                     save_metrics(metrics)
-                time.sleep(5)
-        time.sleep(60)
+                time.sleep(2)
+        time.sleep(20)
 
 if __name__ == "__main__":
     seed()

@@ -35,7 +35,7 @@ def fetch_bg():
                 if metrics:
                     save_metrics(metrics)
                     print(f"Fetched {t}")  # Log progress
-                time.sleep(3)
+                time.sleep(2)
             except Exception as e:
                 print(f"Error fetching {t}: {e}")  # Log errors
         else:
@@ -71,11 +71,7 @@ with st.sidebar:
 
     # Initialize configs in session state
     if 'configs' not in st.session_state:
-        default_weights = {
-            'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
-            'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
-            'EBITDA % EV TTM': 0.075, 'Balance': 0.05, 'P/FCF': 0.075
-        }
+        default_weights = {'P/E': 0.2, 'ROE': 0.2, 'P/B': 0.1, 'PEG': 0.15, 'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.1, 'EBITDA % EV TTM': 0.05}
         default_metrics = list(default_weights.keys())
         st.session_state.configs = {
             'default': {
@@ -85,14 +81,10 @@ with st.sidebar:
             }
         }
 
-    preset_options = ["Value", "Growth", "Momentum", "Quality"]
+    preset_options = ["Overall", "Value", "Growth", "Momentum", "Quality"]
     custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
     config_options = preset_options + custom_configs
     config_name = st.selectbox("Select Config", config_options, index=0)
-
-    if st.button("Force Refresh (Re-fetch All)"):
-        st.warning("Starting force refresh...")
-        threading.Thread(target=lambda: seed(force=True)).start()
     num_top = st.slider("Top N Stocks", 1, 50, 20)
     show_all = st.checkbox("Show All (Ignore Top N)")
     exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)")
@@ -125,7 +117,7 @@ with st.sidebar:
                                 if metrics:
                                     save_metrics(metrics)
                                     print(f"Fetched custom {t}")  # Log progress
-                                time.sleep(3)
+                                time.sleep(2)
                             except Exception as e:
                                 print(f"Error fetching custom {t}: {e}")  # Log errors
                     
@@ -246,7 +238,7 @@ if top_results:
     df = df[displayed_columns]  # Filter to non-excluded
 
     st.subheader("Ranked Top Stocks")
-    st.dataframe(df, width='stretch', height=400, hide_index=False)  # Keeps index
+    st.dataframe(df, width='stretch', height=600, hide_index=False)  # Keeps index
 
     # Export button
     csv = df.to_csv(index=False).encode('utf-8')

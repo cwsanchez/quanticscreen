@@ -36,6 +36,7 @@ DEFAULT_LOGIC = {
 }
 
 PRESETS = {
+    'Overall': DEFAULT_LOGIC,
     'Value': {
         'Undervalued': {'enabled': True, 'boost': 20},
         'Strong Balance Sheet': {'enabled': True, 'boost': 15},

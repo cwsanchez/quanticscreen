@@ -257,7 +257,7 @@ def get_value_from_db(val):
 
 def get_latest_metrics(ticker):
     """
-    Retrieves the latest metrics for a ticker if fetched <72 hours ago.
+    Retrieves the latest metrics for a ticker if fetched <12 hours ago.
     Returns reconstructed metrics dict (like from fetch_metrics) or None if no recent data.
     """
     session = Session()
@@ -270,7 +270,7 @@ def get_latest_metrics(ticker):
     def get_all_latest_metrics():
         """
         Retrieves the latest metrics for all tickers in a single batched query.
-        Returns list of metrics dicts (like get_latest_metrics) for recent data (<72 hours), or empty list if none.
+        Returns list of metrics dicts (like get_latest_metrics) for recent data (<12 hours), or empty list if none.
         """
         session = Session()
         latest_subq = session.query(
@@ -289,7 +289,7 @@ def get_latest_metrics(ticker):
         metrics_list = []
         for latest_fetch in latest_fetches:
             fetch_time = datetime.fromisoformat(latest_fetch.fetch_timestamp)
-            if datetime.now() - fetch_time < timedelta(hours=72):
+            if datetime.now() - fetch_time < timedelta(hours=12):
                 stock = latest_fetch.stock
                 metrics = {
                     'Ticker': latest_fetch.ticker,
@@ -455,10 +455,10 @@ def get_unique_sectors():
 
 def get_stale_tickers():
     """
-    Returns list of tickers with data older than 72 hours, ordered by oldest first.
+    Returns list of tickers with data older than 12 hours, ordered by oldest first.
     """
     session = Session()
-    cutoff = datetime.now() - timedelta(hours=72)
+    cutoff = datetime.now() - timedelta(hours=12)
     stale = session.query(MetricFetch.ticker).filter(MetricFetch.fetch_timestamp < cutoff).order_by(MetricFetch.fetch_timestamp).all()
     session.close()
     return [t[0] for t in stale]

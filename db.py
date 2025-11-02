@@ -22,10 +22,10 @@ if DATABASE_URL is None:
 
 logging.info(f"Using DATABASE_URL: {DATABASE_URL[:20]}... (truncated for security)")
 
-# Use psycopg2 driver for PostgreSQL URIs
+# Use psycopg driver for PostgreSQL URIs
 scheme = DATABASE_URL.split('://')[0] if '://' in DATABASE_URL else ''
 if scheme in ('postgres', 'postgresql') and '+' not in scheme:
-    new_scheme = 'postgresql+psycopg2'
+    new_scheme = 'postgresql+psycopg'
     DATABASE_URL = DATABASE_URL.replace(scheme, new_scheme, 1)
 
 # Ensure SSL for Neon

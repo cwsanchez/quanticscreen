@@ -8,7 +8,7 @@ st.title("Customize Processor Logic")
 default_weights = {
     'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
     'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
-    'EBITDA % EV TTM': 0.075, 'Balance': 0.05
+    'EBITDA % EV TTM': 0.075, 'Beta': 0.05, 'Dividend Yield': 0.05, 'Average Volume': 0.05, 'RSI': 0.05, 'Revenue Growth': 0.05, 'Earnings Growth': 0.05, 'Forward PE': 0.05
 }
 default_metrics = list(default_weights.keys())
 
@@ -20,17 +20,17 @@ presets = {
         'logic': DEFAULT_LOGIC.copy()
     },
     'Growth': {
-        'weights': {'Revenue Growth': 0.15, 'Earnings Growth': 0.15, 'PEG': 0.15, 'Forward P/E': 0.1, 'D/E': 0.1, 'ROE': 0.1, 'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'Growth': 0.3},
-        'metrics': ['Revenue Growth', 'Earnings Growth', 'PEG', 'Forward P/E', 'D/E', 'ROE', 'Gross Margin', 'Net Profit Margin'],
+        'weights': {'Revenue Growth': 0.15, 'Earnings Growth': 0.15, 'PEG': 0.15, 'Forward PE': 0.1, 'D/E': 0.1, 'ROE': 0.1, 'Gross Margin': 0.1, 'Net Profit Margin': 0.1},
+        'metrics': ['Revenue Growth', 'Earnings Growth', 'PEG', 'Forward PE', 'D/E', 'ROE', 'Gross Margin', 'Net Profit Margin'],
         'logic': {k: v.copy() for k, v in DEFAULT_LOGIC.items()}  # Add boosts, e.g., GARP boost +20
     },
     'Momentum': {
-        'weights': {'52W High': 0.1, 'RSI': 0.1, 'Average Volume': 0.1, 'ROE': 0.1, 'P/E': 0.1, 'Momentum': 0.3},
-        'metrics': ['52W High', 'RSI', 'Average Volume', 'ROE', 'P/E'],
+        'weights': {'RSI': 0.1, 'Average Volume': 0.1, 'ROE': 0.1, 'P/E': 0.1},
+        'metrics': ['RSI', 'Average Volume', 'ROE', 'P/E'],
         'logic': {k: v.copy() for k, v in DEFAULT_LOGIC.items()}  # Adjust for momentum flags
     },
     'Quality': {
-        'weights': {'ROE': 0.15, 'D/E': 0.1, 'Gross Margin': 0.1, 'Dividend Yield': 0.1, 'Beta': 0.1, 'Quality': 0.3},
+        'weights': {'ROE': 0.15, 'D/E': 0.1, 'Gross Margin': 0.1, 'Dividend Yield': 0.1, 'Beta': 0.1},
         'metrics': ['ROE', 'D/E', 'Gross Margin', 'Dividend Yield', 'Beta'],
         'logic': {k: v.copy() for k, v in DEFAULT_LOGIC.items()}  # Boost for quality moat
     }
@@ -91,8 +91,9 @@ if config_name.startswith("NewConfig"):
 
 # Metrics Selector
 st.subheader("Select Metrics to Include")
-available_metrics = ['P/E', 'ROE', 'D/E', 'P/B', 'PEG', 'Gross Margin', 'Net Profit Margin', 'FCF % EV TTM', 'EBITDA % EV TTM', 'Balance']
-st.session_state.selected_metrics = st.multiselect("Metrics", available_metrics, default=st.session_state.selected_metrics)
+available_metrics = ['P/E', 'ROE', 'D/E', 'P/B', 'PEG', 'Gross Margin', 'Net Profit Margin', 'FCF % EV TTM', 'EBITDA % EV TTM', 'Beta', 'Dividend Yield', 'Average Volume', 'RSI', 'Revenue Growth', 'Earnings Growth', 'Forward PE']
+defaults = [m for m in st.session_state.get('selected_metrics', []) if m in available_metrics]
+st.session_state.selected_metrics = st.multiselect("Metrics", available_metrics, default=defaults)
 
 # Weights Editor (only for selected, restrict 0-0.3)
 st.subheader("Edit Weights (0.0 - 0.3; should sum to ~1 for selected)")

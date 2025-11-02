@@ -230,18 +230,18 @@ with st.sidebar:
             if len(input_tickers) > 50:
                 input_tickers = input_tickers[:50]
                 st.warning("Input capped to 50 tickers.")
-            valid_tickers = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t)]
+            valid_tickers = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t) and get_latest_metrics(t)]
+            unseeded = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t) and not get_latest_metrics(t)]
             if valid_tickers:
                 if 'custom_sets' not in st.session_state:
                     st.session_state.custom_sets = {}
                 st.session_state.custom_sets[set_name] = valid_tickers
                 st.success(f"Created set '{set_name}' with {len(valid_tickers)} valid tickers.")
                 st.rerun()
-
-                # Check for unseeded tickers
-                unseeded = [t for t in valid_tickers if not get_latest_metrics(t)]
                 if unseeded:
-                    st.warning(f"New tickers queued for fetch: {', '.join(unseeded)}. Fetching limited to 20/hour, may take time.")
+                    for t in unseeded:
+                        st.warning(f"Ticker {t} not found in database and will be skipped. Use the Manage page to add new tickers.")
+
             else:
                 st.error("No valid tickers provided. Tickers should be 1-5 uppercase letters, optionally with '.' or '-'.")
         else:

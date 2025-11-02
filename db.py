@@ -10,11 +10,14 @@ import os
 import time
 import random
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
-try:
-    DATABASE_URL = st.secrets.get('DB_URI', 'sqlite:///stock_screen.db')
-except (ImportError, NameError):
-    DATABASE_URL = os.getenv('DB_URI', 'sqlite:///stock_screen.db')
+DATABASE_URL = os.getenv('DB_URI')
+if DATABASE_URL is None:
+    try:
+        DATABASE_URL = st.secrets.get('DB_URI')
+    except (ImportError, StreamlitSecretNotFoundError, Exception):
+        DATABASE_URL = 'sqlite:///stock_screen.db'
 
 # Use psycopg2 driver for PostgreSQL URIs
 if DATABASE_URL.startswith('postgre'):

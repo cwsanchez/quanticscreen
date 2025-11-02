@@ -6,4 +6,4 @@ yfinance
 pandas
 sqlalchemy
 numpy
-psycopg[binary]==3.2.1
+psycopg2==2.9.9

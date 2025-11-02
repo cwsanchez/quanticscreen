@@ -13,9 +13,9 @@ import streamlit as st
 
 DATABASE_URL = os.getenv('DB_URI') or st.secrets.get('DB_URI', 'sqlite:///stock_screen.db')
 
-# Use psycopg driver for PostgreSQL URIs
+# Use psycopg2 driver for PostgreSQL URIs
 if DATABASE_URL.startswith('postgre'):
-    DATABASE_URL = DATABASE_URL.replace('postgre', 'postgresql+psycopg', 1)
+    DATABASE_URL = DATABASE_URL.replace('postgre', 'postgresql+psycopg2', 1)
 
 # Wrap engine creation with retries
 retries = 3

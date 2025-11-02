@@ -84,9 +84,9 @@ class MetricFetch(Base):
     ebitda_actual = Column(Float)
     p_fcf = Column(Float)
 
-    stock = relationship("Stock", back_populates="fetches")
+    stock = relationship("Stock", back_populates="metric_fetches")
 
-Stock.fetches = relationship("MetricFetch", back_populates="stock")
+Stock.metric_fetches = relationship("MetricFetch", back_populates="stock")
 
 class Metadata(Base):
     __tablename__ = 'metadata'
@@ -364,3 +364,55 @@ def get_stale_tickers():
     stale = session.query(MetricFetch.ticker).filter(MetricFetch.fetch_timestamp < cutoff).order_by(MetricFetch.fetch_timestamp).all()
     session.close()
     return [t[0] for t in stale]
+def get_all_latest_metrics():
+    session = Session()
+    if session.query(Stock).count() == 0:
+        return []
+    from sqlalchemy import and_
+    latest_subq = session.query(
+        MetricFetch.ticker,
+        func.max(MetricFetch.fetch_timestamp).label('max_ts')
+    ).group_by(MetricFetch.ticker).subquery()
+    latest_fetches = session.query(MetricFetch).join(
+        latest_subq,
+        and_(MetricFetch.ticker == latest_subq.c.ticker, MetricFetch.fetch_timestamp == latest_subq.c.max_ts)
+    ).options(joinedload(MetricFetch.stock)).all()
+    metrics_list = []
+    for fetch in latest_fetches:
+        metrics = {
+            'Ticker': fetch.ticker,
+            'Company Name': fetch.stock.company_name if fetch.stock else 'N/A',
+            'Industry': fetch.stock.industry if fetch.stock else 'N/A',
+            'Sector': fetch.stock.sector if fetch.stock else 'N/A',
+            'P/E': fetch.pe if fetch.pe is not None else 'N/A',
+            'ROE': fetch.roe if fetch.roe is not None else 'N/A',
+            'D/E': fetch.de if fetch.de is not None else 'N/A',
+            'P/B': fetch.pb if fetch.pb is not None else 'N/A',
+            'PEG': fetch.peg if fetch.peg is not None else 'N/A',
+            'Gross Margin': fetch.gross_margin if fetch.gross_margin is not None else 'N/A',
+            'Net Profit Margin': fetch.net_profit_margin if fetch.net_profit_margin is not None else 'N/A',
+            'FCF % EV TTM': fetch.fcf_ev if fetch.fcf_ev is not None else 'N/A',
+            'EBITDA % EV TTM': fetch.ebitda_ev if fetch.ebitda_ev is not None else 'N/A',
+            'Current Price': fetch.current_price if fetch.current_price is not None else 'N/A',
+            '52W High': fetch.w52_high if fetch.w52_high is not None else 'N/A',
+            '52W Low': fetch.w52_low if fetch.w52_low is not None else 'N/A',
+            'Market Cap': fetch.market_cap if fetch.market_cap is not None else 'N/A',
+            'EV': fetch.ev if fetch.ev is not None else 'N/A',
+            'Total Cash': fetch.total_cash if fetch.total_cash is not None else 'N/A',
+            'Total Debt': fetch.total_debt if fetch.total_debt is not None else 'N/A',
+            'FCF Actual': fetch.fcf_actual if fetch.fcf_actual is not None else 'N/A',
+            'EBITDA Actual': fetch.ebitda_actual if fetch.ebitda_actual is not None else 'N/A',
+            'P/FCF': fetch.p_fcf if fetch.p_fcf is not None else 'N/A',
+            'Beta': fetch.beta if fetch.beta is not None else 'N/A',
+            'Dividend Yield': fetch.dividend_yield if fetch.dividend_yield is not None else 'N/A',
+            'Average Volume': fetch.avg_volume if fetch.avg_volume is not None else 'N/A',
+            'RSI': fetch.rsi if fetch.rsi is not None else 'N/A',
+            'Revenue Growth': fetch.revenue_growth if fetch.revenue_growth is not None else 'N/A',
+            'Earnings Growth': fetch.earnings_growth if fetch.earnings_growth is not None else 'N/A',
+            'Forward PE': fetch.forward_pe if fetch.forward_pe is not None else 'N/A',
+            'fetch_timestamp': fetch.fetch_timestamp,
+            'fetch_id': fetch.fetch_id
+        }
+        metrics_list.append(metrics)
+    session.close()
+    return metrics_list

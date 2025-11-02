@@ -3,6 +3,7 @@ seed_stocks.py
 tickers.csv
 dump.sql
 export_db.py
+migrate_to_neon.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

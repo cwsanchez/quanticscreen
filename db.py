@@ -11,30 +11,32 @@ import time
 import random
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
+import logging
 
-DATABASE_URL = os.getenv('DB_URI')
-if DATABASE_URL is None:
-    try:
-        DATABASE_URL = st.secrets['DB_URI']
-    except (KeyError, StreamlitSecretNotFoundError):
-        DATABASE_URL = 'sqlite:///stock_screen.db'
-        print("DB_URI not found in secrets, falling back to SQLite.")
+logging.basicConfig(level=logging.INFO)
 
-# Safety checks
+DATABASE_URL = os.getenv('DATABASE_URL')
+
 if DATABASE_URL is None:
-    DATABASE_URL = 'sqlite:///stock_screen.db'
-if not DATABASE_URL:
-    DATABASE_URL = 'sqlite:///stock_screen.db'
+    DATABASE_URL = st.secrets.get('DATABASE_URL', 'sqlite:///stock_screen.db')
+
+logging.info(f"Using DATABASE_URL: {DATABASE_URL[:20]}... (truncated for security)")
 
 # Use psycopg2 driver for PostgreSQL URIs
-if DATABASE_URL.startswith('postgre'):
-    DATABASE_URL = DATABASE_URL.replace('postgre', 'postgresql+psycopg2', 1)
+scheme = DATABASE_URL.split('://')[0] if '://' in DATABASE_URL else ''
+if scheme in ('postgres', 'postgresql') and '+' not in scheme:
+    new_scheme = 'postgresql+psycopg2'
+    DATABASE_URL = DATABASE_URL.replace(scheme, new_scheme, 1)
+
+# Ensure SSL for Neon
+if 'sslmode=require' not in DATABASE_URL and 'postgres' in DATABASE_URL.lower():
+    DATABASE_URL += '?sslmode=require' if '?' not in DATABASE_URL else '&sslmode=require'
 
 # Wrap engine creation with retries
 retries = 3
 for attempt in range(retries):
     try:
-        engine = create_engine(DATABASE_URL, echo=False)
+        engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, pool_recycle=300)
         # Test connection
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))

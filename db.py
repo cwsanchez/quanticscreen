@@ -33,7 +33,7 @@ if 'sslmode=require' not in DATABASE_URL and 'postgres' in DATABASE_URL.lower():
     DATABASE_URL += '?sslmode=require' if '?' not in DATABASE_URL else '&sslmode=require'
 
 # Wrap engine creation with retries
-retries = 3
+retries = 5
 for attempt in range(retries):
     try:
         engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, pool_recycle=300)
@@ -43,8 +43,8 @@ for attempt in range(retries):
         break
     except Exception as e:
         if attempt < retries - 1:
-            sleep_time = random.randint(5, 10)
-            print(f"DB connection attempt {attempt + 1} failed: {e}. Retrying in {sleep_time}s...")
+            sleep_time = random.randint(10, 20)
+            logging.error(f"DB connection attempt {attempt + 1} failed: {e}. Retrying in {sleep_time}s...")
             time.sleep(sleep_time)
         else:
             raise e
@@ -182,6 +182,60 @@ def get_latest_metrics(ticker):
 
     if not latest_fetch:
         return None
+    
+    def get_all_latest_metrics():
+        """
+        Retrieves the latest metrics for all tickers in a single batched query.
+        Returns list of metrics dicts (like get_latest_metrics) for recent data (<72 hours), or empty list if none.
+        """
+        session = Session()
+        latest_subq = session.query(
+            MetricFetch.ticker,
+            func.max(MetricFetch.fetch_timestamp).label('max_ts')
+        ).group_by(MetricFetch.ticker).subquery()
+        latest_fetches = session.query(MetricFetch).join(
+            latest_subq,
+            and_(MetricFetch.ticker == latest_subq.c.ticker, MetricFetch.fetch_timestamp == latest_subq.c.max_ts)
+        ).options(joinedload(MetricFetch.stock)).all()
+        session.close()
+    
+        if not latest_fetches:
+            return []
+    
+        metrics_list = []
+        for latest_fetch in latest_fetches:
+            fetch_time = datetime.fromisoformat(latest_fetch.fetch_timestamp)
+            if datetime.now() - fetch_time < timedelta(hours=72):
+                stock = latest_fetch.stock
+                metrics = {
+                    'Ticker': latest_fetch.ticker,
+                    'Company Name': stock.company_name if stock else 'N/A',
+                    'Industry': stock.industry if stock else 'N/A',
+                    'Sector': stock.sector if stock else 'N/A',
+                    'P/E': get_value_from_db(latest_fetch.pe),
+                    'ROE': get_value_from_db(latest_fetch.roe),
+                    'D/E': get_value_from_db(latest_fetch.de),
+                    'P/B': get_value_from_db(latest_fetch.pb),
+                    'PEG': get_value_from_db(latest_fetch.peg),
+                    'Gross Margin': get_value_from_db(latest_fetch.gross_margin),
+                    'Net Profit Margin': get_value_from_db(latest_fetch.net_profit_margin),
+                    'FCF % EV TTM': get_value_from_db(latest_fetch.fcf_ev),
+                    'EBITDA % EV TTM': get_value_from_db(latest_fetch.ebitda_ev),
+                    'Current Price': get_value_from_db(latest_fetch.current_price),
+                    '52W High': get_value_from_db(latest_fetch.w52_high),
+                    '52W Low': get_value_from_db(latest_fetch.w52_low),
+                    'Market Cap': get_value_from_db(latest_fetch.market_cap),
+                    'EV': get_value_from_db(latest_fetch.ev),
+                    'Total Cash': get_value_from_db(latest_fetch.total_cash),
+                    'Total Debt': get_value_from_db(latest_fetch.total_debt),
+                    'FCF Actual': get_value_from_db(latest_fetch.fcf_actual),
+                    'EBITDA Actual': get_value_from_db(latest_fetch.ebitda_actual),
+                    'P/FCF': get_value_from_db(latest_fetch.p_fcf),
+                    'fetch_timestamp': latest_fetch.fetch_timestamp,
+                    'fetch_id': latest_fetch.fetch_id
+                }
+                metrics_list.append(metrics)
+        return metrics_list
 
     fetch_time = datetime.fromisoformat(latest_fetch.fetch_timestamp)
     if datetime.now() - fetch_time < timedelta(hours=72):

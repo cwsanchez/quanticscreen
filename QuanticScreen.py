@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, get_all_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers
 from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS
 import pandas as pd
 import numpy as np  # For np.nan
@@ -138,6 +138,10 @@ db_empty = len(get_all_tickers()) == 0
 if db_empty:
     st.warning("DB failed/empty. Retried. Showing samples. Restart to retry.")
 
+@st.cache_data
+def load_all_metrics():
+    return get_all_latest_metrics()
+
 # Auto-fetch logic with polling
 def fetch_bg():
     et_tz = pytz.timezone('US/Eastern')
@@ -176,6 +180,8 @@ threading.Thread(target=fetch_bg, daemon=True).start()
 
 st.title("QuanticScreen")
 
+st.info("Loading large datasets may take time; consider filtering for faster results.")
+
 with st.sidebar:
     st.sidebar.title("QuanticScreen")
     dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()))
@@ -191,7 +197,7 @@ with st.sidebar:
     custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
     config_options = preset_options + custom_configs
     config_name = st.selectbox("Select Config", config_options, index=0)
-    num_top = st.slider("Top N Stocks", 1, 50, 20)
+    num_top = st.slider("Top N Stocks", 1, 200, 100)
     show_all = st.checkbox("Show All (Ignore Top N)")
     exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)")
 
@@ -226,22 +232,29 @@ with st.sidebar:
 if db_empty:
     metrics_list = sample_metrics
 else:
-    tickers = get_all_tickers()
-    metrics_list = [get_latest_metrics(t) for t in tickers]
-    metrics_list = [m for m in metrics_list if m]
+    metrics_list = load_all_metrics()
+
+# Set config
+if config_name in PRESETS:
+    config = {
+        'weights': default_weights,
+        'metrics': default_metrics,
+        'logic': PRESETS[config_name]
+    }
+else:
+    config = st.session_state.configs[config_name]
+
+weights = config['weights']
+selected_metrics = config['metrics']
+logic = config['logic']
 
 results = []
-for metrics in metrics_list:
-    if config_name in PRESETS:
-        config = {
-            'weights': default_weights,
-            'metrics': default_metrics,
-            'logic': PRESETS[config_name]
-        }
-    else:
-        config = st.session_state.configs[config_name]
-    processed = process_stock(metrics, config_dict=config)
-    results.append(processed)
+with st.spinner('Processing stocks...'):
+    progress = st.progress(0)
+    for i, metrics in enumerate(metrics_list):
+        r = process_stock(metrics, weights, selected_metrics, logic)
+        results.append(r)
+        progress.progress((i+1)/len(metrics_list))
 
 # Apply filters based on dataset
 if dataset in st.session_state.get('custom_sets', {}):

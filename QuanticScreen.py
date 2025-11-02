@@ -1,6 +1,8 @@
 import streamlit as st
 import json
 from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, get_all_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers
+import logging
+logging.basicConfig(level=logging.INFO)
 logging.info("Successfully imported get_all_latest_metrics")
 from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS
 import pandas as pd

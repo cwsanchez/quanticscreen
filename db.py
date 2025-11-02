@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_, cast, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.dialects.sqlite import insert
@@ -257,7 +257,7 @@ def get_value_from_db(val):
 
 def get_latest_metrics(ticker):
     """
-    Retrieves the latest metrics for a ticker if fetched <72 hours ago.
+    Retrieves the latest metrics for a ticker if fetched <12 hours ago.
     Returns reconstructed metrics dict (like from fetch_metrics) or None if no recent data.
     """
     session = Session()
@@ -270,7 +270,7 @@ def get_latest_metrics(ticker):
     def get_all_latest_metrics():
         """
         Retrieves the latest metrics for all tickers in a single batched query.
-        Returns list of metrics dicts (like get_latest_metrics) for recent data (<72 hours), or empty list if none.
+        Returns list of metrics dicts (like get_latest_metrics) for recent data (<12 hours), or empty list if none.
         """
         session = Session()
         latest_subq = session.query(
@@ -289,7 +289,7 @@ def get_latest_metrics(ticker):
         metrics_list = []
         for latest_fetch in latest_fetches:
             fetch_time = datetime.fromisoformat(latest_fetch.fetch_timestamp)
-            if datetime.now() - fetch_time < timedelta(hours=72):
+            if datetime.now() - fetch_time < timedelta(hours=12):
                 stock = latest_fetch.stock
                 metrics = {
                     'Ticker': latest_fetch.ticker,
@@ -365,23 +365,12 @@ def get_latest_metrics(ticker):
 def save_metrics(metrics):
     """
     Saves raw metrics to DB with current timestamp.
-    Upserts Stock (now with sector), inserts MetricFetch.
+    Inserts MetricFetch. Stock upsert handled elsewhere.
     Returns the fetch_id.
     """
     session = Session()
 
     ticker = metrics['Ticker']
-    company_name = metrics.get('Company Name', 'N/A')
-    industry = metrics.get('Industry', 'N/A')
-    sector = metrics.get('Sector', 'N/A')
-
-    # Upsert Stock
-    stmt = insert(Stock).values(ticker=ticker, company_name=company_name, industry=industry, sector=sector)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['ticker'],
-        set_={'company_name': company_name, 'industry': industry, 'sector': sector}
-    )
-    session.execute(stmt)
 
     # Insert MetricFetch
     now = datetime.now().isoformat()
@@ -455,11 +444,12 @@ def get_unique_sectors():
 
 def get_stale_tickers():
     """
-    Returns list of tickers with data older than 72 hours, ordered by oldest first.
+    Returns list of tickers with data older than 12 hours, ordered by oldest first.
     """
     session = Session()
-    cutoff = datetime.now() - timedelta(hours=72)
-    stale = session.query(MetricFetch.ticker).filter(MetricFetch.fetch_timestamp < cutoff).order_by(MetricFetch.fetch_timestamp).all()
+    cutoff = datetime.now() - timedelta(hours=12)
+    # TODO: Migrate fetch_timestamp to DateTime column for better performance.
+    stale = session.query(MetricFetch.ticker).filter(cast(MetricFetch.fetch_timestamp, DateTime) < cutoff).order_by(MetricFetch.fetch_timestamp).all()
     session.close()
     return [t[0] for t in stale]
 def get_all_latest_metrics():

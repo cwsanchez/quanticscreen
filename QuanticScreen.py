@@ -147,39 +147,55 @@ def load_all_metrics():
 
 # Auto-fetch logic with polling
 def fetch_bg():
+    if st.session_state.get('bg_thread_started', False):
+        logging.info("Background thread already started - skipping duplicate.")
+        return
+    logging.info("Starting background refresh...")
     et_tz = pytz.timezone('US/Eastern')
     now_et = datetime.now(et_tz)
     is_weekday = now_et.weekday() < 5
     market_open = dt_time(9, 30)
     current_time = now_et.time()
     market_open_dt = datetime.combine(now_et.date(), market_open).replace(tzinfo=et_tz)
-    market_update_end = market_open_dt + timedelta(hours=4)
+    market_update_end = market_open_dt + timedelta(hours=6.5)  # 9:30 AM to 4:00 PM ET
 
-    if is_weekday and current_time > market_open and current_time < market_update_end.time():
-        last_fetch_str = get_metadata('last_fetch_time')
-        last_fetch = datetime.fromisoformat(last_fetch_str).replace(tzinfo=et_tz) if last_fetch_str else None
-        if last_fetch is None or last_fetch < market_open_dt:
-            stale_tickers = get_stale_tickers()
-            if stale_tickers:
-                fetcher = StockFetcher()
-                batch_size = random.randint(5, 10)
-                for i in range(0, len(stale_tickers), batch_size):
-                    batch = stale_tickers[i:i + batch_size]
-                    for t in batch:
-                        try:
-                            metrics = fetcher.fetch_metrics(t)
-                            if metrics:
-                                save_metrics(metrics)
-                        except Exception as e:
-                            print(f"Error fetching {t}: {e}")
-                        time.sleep(random.randint(5, 10))
-                    time.sleep(random.randint(5, 10))
-                set_metadata('last_fetch_time', datetime.now().isoformat())
+    if not (is_weekday and current_time >= market_open and current_time <= market_update_end.time()):
+        logging.info("Skipping: not market hours/weekday.")
+        # Schedule next poll in 15 mins
+        threading.Timer(15 * 60, fetch_bg).start()
+        return
+
+    last_fetch_str = get_metadata('last_fetch_time')
+    last_fetch = datetime.fromisoformat(last_fetch_str).replace(tzinfo=et_tz) if last_fetch_str else None
+    if last_fetch is None or last_fetch < market_open_dt:
+        stale_tickers = get_stale_tickers()
+        if not stale_tickers:
+            logging.info("No stale tickers found.")
+            # Schedule next poll in 15 mins
+            threading.Timer(15 * 60, fetch_bg).start()
+            return
+        fetcher = StockFetcher()
+        batch_size = random.randint(5, 10)
+        for i in range(0, len(stale_tickers), batch_size):
+            batch = stale_tickers[i:i + batch_size]
+            for t in batch:
+                try:
+                    metrics = fetcher.fetch_metrics(t)
+                    if metrics:
+                        save_metrics(metrics)
+                        logging.info(f"Fetched and updated {t}.")
+                except Exception as e:
+                    logging.error(f"Error fetching {t}: {e}")
+                time.sleep(random.randint(5, 10))
+            time.sleep(random.randint(5, 10))
+        set_metadata('last_fetch_time', datetime.now().isoformat())
     # Schedule next poll in 15 mins
     threading.Timer(15 * 60, fetch_bg).start()
 
 # Start polling thread
-threading.Thread(target=fetch_bg, daemon=True).start()
+if not st.session_state.get('bg_thread_started', False):
+    threading.Thread(target=fetch_bg, daemon=True).start()
+    st.session_state['bg_thread_started'] = True
 
 st.title("QuanticScreen")
 
@@ -214,18 +230,18 @@ with st.sidebar:
             if len(input_tickers) > 50:
                 input_tickers = input_tickers[:50]
                 st.warning("Input capped to 50 tickers.")
-            valid_tickers = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t)]
+            valid_tickers = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t) and get_latest_metrics(t)]
+            unseeded = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t) and not get_latest_metrics(t)]
             if valid_tickers:
                 if 'custom_sets' not in st.session_state:
                     st.session_state.custom_sets = {}
                 st.session_state.custom_sets[set_name] = valid_tickers
                 st.success(f"Created set '{set_name}' with {len(valid_tickers)} valid tickers.")
                 st.rerun()
-
-                # Check for unseeded tickers
-                unseeded = [t for t in valid_tickers if not get_latest_metrics(t)]
                 if unseeded:
-                    st.warning(f"New tickers queued for fetch: {', '.join(unseeded)}. Fetching limited to 20/hour, may take time.")
+                    for t in unseeded:
+                        st.warning(f"Ticker {t} not found in database and will be skipped. Use the Manage page to add new tickers.")
+
             else:
                 st.error("No valid tickers provided. Tickers should be 1-5 uppercase letters, optionally with '.' or '-'.")
         else:
@@ -262,7 +278,11 @@ with st.spinner('Processing stocks...'):
 # Apply filters based on dataset
 if dataset in st.session_state.get('custom_sets', {}):
     custom_tickers = st.session_state.custom_sets[dataset]
-    results = [r for r in results if r['metrics']['Ticker'] in custom_tickers]
+    valid_tickers = [t for t in custom_tickers if get_latest_metrics(t)]
+    skipped = [t for t in custom_tickers if not get_latest_metrics(t)]
+    if skipped:
+        st.warning(f"Tickers {', '.join(skipped)} not found in database and will be skipped. Use Manage page to add new tickers.")
+    results = [r for r in results if r['metrics']['Ticker'] in valid_tickers]
 elif dataset == "Large Cap":
     results = [r for r in results if get_float(r['metrics'], "Market Cap") > 10e9]
 elif dataset == "Mid Cap":

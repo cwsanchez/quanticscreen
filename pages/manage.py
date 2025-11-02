@@ -4,6 +4,7 @@ import logging
 import re
 import random
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import select
 from db import get_latest_metrics, get_stale_tickers, save_metrics, Session, Stock, MetricFetch, ProcessedResult
 from fetcher import StockFetcher
 
@@ -124,12 +125,22 @@ def manage_page():
                 st.warning("Rate limit: 5 min cooldown.")
             else:
                 st.session_state['last_delete'] = time.time()
-                session = Session()
                 for ticker in tickers:
-                    session.query(MetricFetch).filter_by(ticker=ticker).delete()
-                    session.query(ProcessedResult).join(MetricFetch).filter(MetricFetch.ticker == ticker).delete()
-                    session.query(Stock).filter_by(ticker=ticker).delete()
-                    st.success(f"Deleted {ticker}")
-                session.commit()
-                session.close()
+                    try:
+                        session = Session()
+                        # Delete ProcessedResults using subquery
+                        subq = select(MetricFetch.fetch_id).where(MetricFetch.ticker == ticker).subquery()
+                        session.query(ProcessedResult).filter(ProcessedResult.fetch_id.in_(subq)).delete(synchronize_session=False)
+                        # Delete MetricFetches
+                        session.query(MetricFetch).filter_by(ticker=ticker).delete(synchronize_session=False)
+                        # Delete Stock
+                        session.query(Stock).filter_by(ticker=ticker).delete(synchronize_session=False)
+                        session.commit()
+                        st.success(f"Deleted {ticker} and related data.")
+                    except Exception as e:
+                        session.rollback()
+                        st.error(f"Error deleting {ticker}: {str(e)}")
+                        logging.error(f"Delete error for {ticker}: {e}")
+                    finally:
+                        session.close()
 manage_page()

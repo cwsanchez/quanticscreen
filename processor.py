@@ -35,7 +35,51 @@ DEFAULT_LOGIC = {
     'Debt Burden': {'enabled': True, 'boost': -15}
 }
 
-def process_stock(metrics, config_dict=None):
+PRESETS = {
+    'Overall': DEFAULT_LOGIC,
+    'Value': {
+        'Undervalued': {'enabled': True, 'boost': 20},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 15},
+        'Quality Moat': {'enabled': True, 'boost': 10},
+        'GARP': {'enabled': True, 'boost': 5},
+        'High-Risk Growth': {'enabled': True, 'boost': -5},
+        'Value Trap': {'enabled': True, 'boost': -5},
+        'Momentum Building': {'enabled': True, 'boost': 0},
+        'Debt Burden': {'enabled': True, 'boost': -20}
+    },
+    'Growth': {
+        'Undervalued': {'enabled': True, 'boost': 5},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 5},
+        'Quality Moat': {'enabled': True, 'boost': 5},
+        'GARP': {'enabled': True, 'boost': 20},
+        'High-Risk Growth': {'enabled': True, 'boost': 10},
+        'Value Trap': {'enabled': True, 'boost': -15},
+        'Momentum Building': {'enabled': True, 'boost': 10},
+        'Debt Burden': {'enabled': True, 'boost': -10}
+    },
+    'Momentum': {
+        'Undervalued': {'enabled': True, 'boost': 5},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 5},
+        'Quality Moat': {'enabled': True, 'boost': 5},
+        'GARP': {'enabled': True, 'boost': 5},
+        'High-Risk Growth': {'enabled': True, 'boost': 5},
+        'Value Trap': {'enabled': True, 'boost': -15},
+        'Momentum Building': {'enabled': True, 'boost': 20},
+        'Debt Burden': {'enabled': True, 'boost': -10}
+    },
+    'Quality': {
+        'Undervalued': {'enabled': True, 'boost': 10},
+        'Strong Balance Sheet': {'enabled': True, 'boost': 20},
+        'Quality Moat': {'enabled': True, 'boost': 20},
+        'GARP': {'enabled': True, 'boost': 5},
+        'High-Risk Growth': {'enabled': True, 'boost': -15},
+        'Value Trap': {'enabled': True, 'boost': -15},
+        'Momentum Building': {'enabled': True, 'boost': 5},
+        'Debt Burden': {'enabled': True, 'boost': -20}
+    }
+}
+
+def process_stock(metrics, weights=None, selected_metrics=None, logic=DEFAULT_LOGIC):
     """
     Processes a single stock's metrics per algorithm steps 2-5.
     Returns dict with: base_score, final_score, flags (list), positives (str), risks (str), factor_boosts (dict for value/momentum/etc.).
@@ -44,6 +88,7 @@ def process_stock(metrics, config_dict=None):
     """
     # Use the top-level get_float
     pe = get_float(metrics, 'P/E')
+    forward_pe = get_float(metrics, 'Forward P/E')
     roe = get_float(metrics, 'ROE')
     de = get_float(metrics, 'D/E')
     pb = get_float(metrics, 'P/B')
@@ -59,54 +104,31 @@ def process_stock(metrics, config_dict=None):
     low = get_float(metrics, '52W Low')
     debt = get_float(metrics, 'Total Debt')
     p_fcf = get_float(metrics, 'P/FCF')
+    revenue_growth = get_float(metrics, 'Revenue Growth')
+    earnings_growth = get_float(metrics, 'Earnings Growth')
+    rsi = get_float(metrics, 'RSI')
+    beta = get_float(metrics, 'Beta')
+    dividend = get_float(metrics, 'Dividend Yield')
+    avg_volume = get_float(metrics, 'Average Volume')
 
-    # Load config or defaults
-    if config_dict is None:
-        weights = {
-            'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
-            'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
-            'EBITDA % EV TTM': 0.075, 'Balance': 0.05
-        }
+    if weights is None:
+        weights = {'P/E': 0.2, 'ROE': 0.2, 'P/B': 0.1, 'PEG': 0.15, 'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.1, 'EBITDA % EV TTM': 0.05}
+    if selected_metrics is None:
         selected_metrics = list(weights.keys())
-        logic = DEFAULT_LOGIC
-    else:
-        weights = config_dict['weights']
-        selected_metrics = config_dict['metrics']
-        logic = config_dict['logic']
+    metric_normalizers = {
+        'P/E': lambda v: max(0, min(100, 100 - (v * 2))),  # Low better, good <50
+        'ROE': lambda v: max(0, min(100, v * 4)),  # High better, good >25
+        'D/E': lambda v: max(0, min(100, 100 - (v * 50))),  # Low better, good <2
+        'P/B': lambda v: max(0, min(100, 100 - (v * 20))),  # Low better, good <5
+        'PEG': lambda v: max(0, min(100, 100 - (v * 50))),  # Low better, good <2
+        'Gross Margin': lambda v: max(0, min(100, v)),  # High better, %
+        'Net Profit Margin': lambda v: max(0, min(100, v)),  # High better, %
+        'FCF % EV TTM': lambda v: max(0, min(100, v * 10)),  # High better, good >10%
+        'EBITDA % EV TTM': lambda v: max(0, min(100, v * 10)),  # High better
+    }
 
-    # Normalize weights for selected only
-    sum_w = sum(weights.get(m, 0) for m in selected_metrics)
-    if sum_w > 0:
-        weights = {m: weights[m] / sum_w for m in selected_metrics}
-
-    # Step 2: Individual Metric Scoring (0-10)
-    # (Comments on single-metric thresholds omitted as per user: only multi-metric correlations need explanation)
-    metric_scores = {}
-    if 'P/E' in selected_metrics:
-        metric_scores['P/E'] = 10 if pe < 15 else 7 if pe < 20 else 5 if pe < 30 else 2 if pe < 40 else 0
-    if 'ROE' in selected_metrics:
-        metric_scores['ROE'] = 10 if roe > 15 else 7 if roe >= 10 else 5 if roe >= 5 else 0
-    if 'D/E' in selected_metrics:
-        metric_scores['D/E'] = 10 if de < 1 else 7 if de < 1.5 else 5 if de < 2 else 0
-    if 'P/B' in selected_metrics:
-        metric_scores['P/B'] = 10 if pb < 1.5 else 7 if pb < 2.5 else 5 if pb < 4 else 0
-    if 'PEG' in selected_metrics:
-        metric_scores['PEG'] = 10 if peg < 1 else 7 if peg < 1.5 else 5 if peg < 2 else 0
-    if 'Gross Margin' in selected_metrics:
-        metric_scores['Gross Margin'] = 10 if gross > 40 else 7 if gross >= 30 else 5 if gross >= 20 else 0
-    if 'Net Profit Margin' in selected_metrics:
-        metric_scores['Net Profit Margin'] = 10 if net > 15 else 7 if net >= 10 else 5 if net >= 5 else 0
-    if 'FCF % EV TTM' in selected_metrics:
-        metric_scores['FCF % EV TTM'] = 10 if fcf_ev > 5 else 7 if fcf_ev >= 3 else 5 if fcf_ev >= 1 else 0
-    if 'EBITDA % EV TTM' in selected_metrics:
-        metric_scores['EBITDA % EV TTM'] = 10 if ebitda_ev > 10 else 7 if ebitda_ev >= 5 else 5 if ebitda_ev >= 2 else 0
-    if 'Balance' in selected_metrics:
-        metric_scores['Balance'] = 10 if (cash > 0.2 * mcap) or (price > 0.8 * high) else 0 if (debt > mcap) or (price < 1.1 * low) else 5
-    if 'P/FCF' in selected_metrics:
-        metric_scores['P/FCF'] = 10 if p_fcf < 15 else 7 if p_fcf < 20 else 5 if p_fcf < 30 else 2 if p_fcf < 40 else 0
-
-    # Step 3: Weighting & Base Score (0-100)
-    base_score = sum(metric_scores.get(m, 0) * weights.get(m, 0) for m in selected_metrics) * 10  # Scale to 0-100
+    norm_scores = {metric: metric_normalizers.get(metric, lambda v: 0)(get_float(metrics, metric)) for metric in selected_metrics}
+    base_score = sum(norm_scores[metric] * weights[metric] for metric in selected_metrics) / sum(weights.values()) if sum(weights.values()) > 0 else 0
 
     # Step 4: Correlations & Flags (Boost/Penalty %)
     flags = []
@@ -125,14 +147,14 @@ def process_stock(metrics, config_dict=None):
 
     # Step 5: Factor Lens (Extra Boosts, sub-rankings in main.py)
     factor_boosts = {
-        # Identifies undervalued assets with strong equity returns.
-        'value': 10 if (pb < 1.5 and roe > 15) or p_fcf < 15 else 0,
-        # Identifies upward trends with cash support.
-        'momentum': 5 if price > 0.9 * high and get_float(metrics, 'FCF Actual') > 0 else 0,
-        # Identifies high-quality businesses with profitability/low leverage.
-        'quality': 10 if gross > 40 and net > 15 and de < 1 else 0,
-        # Identifies growth at reasonable scale.
-        'growth': 5 if peg < 1 and 1e9 < mcap < 1e11 else 0
+        # Value: Low P/FCF boosts value
+        'value': 20 if p_fcf < 15 or (pb < 1.5 and roe > 15) else 10 if p_fcf < 20 else 0,
+        # Momentum: Price near 52W high, RSI in range, high volume, ROE >15
+        'momentum': 20 if price > 0.9 * high and 50 < rsi < 70 and avg_volume > 1000000 and roe > 15 else 10 if price > 0.8 * high else 0,
+        # Quality: High ROE, low D/E, high margins, dividend >2%, low beta
+        'quality': 20 if roe > 20 and de < 1 and gross > 40 and dividend > 2 and beta < 1 else 10 if roe > 15 and de < 1.5 else 0,
+        # Growth: Low PEG, high revenue/earnings growth, reasonable forward PE, low D/E
+        'growth': 20 if peg < 1.5 and revenue_growth > 10 and earnings_growth > 10 and forward_pe < 25 and de < 1 else 10 if peg < 2 else 0
     }
     factor_boost_total = sum(factor_boosts.values())
 

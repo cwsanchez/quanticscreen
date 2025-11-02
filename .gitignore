@@ -1,3 +1,10 @@
+# custom
+seed_stocks.py
+tickers.csv
+dump.sql
+export_db.py
+migrate_to_neon.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -140,6 +147,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+.env.example
 .venv
 env/
 venv/

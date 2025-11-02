@@ -11,7 +11,10 @@ import time
 import random
 import streamlit as st
 
-DATABASE_URL = os.getenv('DB_URI') or st.secrets.get('DB_URI', 'sqlite:///stock_screen.db')
+try:
+    DATABASE_URL = st.secrets.get('DB_URI', 'sqlite:///stock_screen.db')
+except (ImportError, NameError):
+    DATABASE_URL = os.getenv('DB_URI', 'sqlite:///stock_screen.db')
 
 # Use psycopg2 driver for PostgreSQL URIs
 if DATABASE_URL.startswith('postgre'):

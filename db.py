@@ -83,6 +83,13 @@ class MetricFetch(Base):
     fcf_actual = Column(Float)
     ebitda_actual = Column(Float)
     p_fcf = Column(Float)
+    beta = Column(Float)
+    dividend_yield = Column(Float)
+    avg_volume = Column(Float)
+    rsi = Column(Float)
+    revenue_growth = Column(Float)
+    earnings_growth = Column(Float)
+    forward_pe = Column(Float)
 
     stock = relationship("Stock", back_populates="metric_fetches")
 
@@ -145,6 +152,83 @@ def init_db():
                     conn.commit()
     except Exception as e:
         print(f"Migration error adding p_fcf: {e}")
+
+    try:
+        # Migration: Add beta column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'beta' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN beta FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding beta: {e}")
+
+    try:
+        # Migration: Add dividend_yield column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'dividend_yield' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN dividend_yield FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding dividend_yield: {e}")
+
+    try:
+        # Migration: Add avg_volume column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'avg_volume' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN avg_volume FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding avg_volume: {e}")
+
+    try:
+        # Migration: Add rsi column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'rsi' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN rsi FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding rsi: {e}")
+
+    try:
+        # Migration: Add revenue_growth column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'revenue_growth' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN revenue_growth FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding revenue_growth: {e}")
+
+    try:
+        # Migration: Add earnings_growth column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'earnings_growth' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN earnings_growth FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding earnings_growth: {e}")
+
+    try:
+        # Migration: Add forward_pe column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'forward_pe' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN forward_pe FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding forward_pe: {e}")
 
     # Conditional table creation
     tables = [Stock, MetricFetch, Metadata, ProcessedResult]
@@ -265,6 +349,13 @@ def get_latest_metrics(ticker):
             'FCF Actual': get_value_from_db(latest_fetch.fcf_actual),
             'EBITDA Actual': get_value_from_db(latest_fetch.ebitda_actual),
             'P/FCF': get_value_from_db(latest_fetch.p_fcf),
+            'Beta': get_value_from_db(latest_fetch.beta),
+            'Dividend Yield': get_value_from_db(latest_fetch.dividend_yield),
+            'Average Volume': get_value_from_db(latest_fetch.avg_volume),
+            'RSI': get_value_from_db(latest_fetch.rsi),
+            'Revenue Growth': get_value_from_db(latest_fetch.revenue_growth),
+            'Earnings Growth': get_value_from_db(latest_fetch.earnings_growth),
+            'Forward PE': get_value_from_db(latest_fetch.forward_pe),
             'fetch_timestamp': latest_fetch.fetch_timestamp,  # Added for potential future use, though not required after seeder simplification
             'fetch_id': latest_fetch.fetch_id  # Added to allow direct access if needed
         }
@@ -315,7 +406,14 @@ def save_metrics(metrics):
         total_debt=metrics.get('Total Debt') if metrics.get('Total Debt') != 'N/A' else None,
         fcf_actual=metrics.get('FCF Actual') if metrics.get('FCF Actual') != 'N/A' else None,
         ebitda_actual=metrics.get('EBITDA Actual') if metrics.get('EBITDA Actual') != 'N/A' else None,
-        p_fcf=metrics.get('P/FCF') if metrics.get('P/FCF') != 'N/A' else None
+        p_fcf=metrics.get('P/FCF') if metrics.get('P/FCF') != 'N/A' else None,
+        beta=metrics.get('Beta') if metrics.get('Beta') != 'N/A' else None,
+        dividend_yield=metrics.get('Dividend Yield') if metrics.get('Dividend Yield') != 'N/A' else None,
+        avg_volume=metrics.get('Average Volume') if metrics.get('Average Volume') != 'N/A' else None,
+        rsi=metrics.get('RSI') if metrics.get('RSI') != 'N/A' else None,
+        revenue_growth=metrics.get('Revenue Growth') if metrics.get('Revenue Growth') != 'N/A' else None,
+        earnings_growth=metrics.get('Earnings Growth') if metrics.get('Earnings Growth') != 'N/A' else None,
+        forward_pe=metrics.get('Forward PE') if metrics.get('Forward PE') != 'N/A' else None
     )
     session.add(fetch)
     session.commit()

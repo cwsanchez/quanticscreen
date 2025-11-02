@@ -15,9 +15,16 @@ from streamlit.errors import StreamlitSecretNotFoundError
 DATABASE_URL = os.getenv('DB_URI')
 if DATABASE_URL is None:
     try:
-        DATABASE_URL = st.secrets.get('DB_URI')
-    except (ImportError, StreamlitSecretNotFoundError, Exception):
+        DATABASE_URL = st.secrets['DB_URI']
+    except (KeyError, StreamlitSecretNotFoundError):
         DATABASE_URL = 'sqlite:///stock_screen.db'
+        print("DB_URI not found in secrets, falling back to SQLite.")
+
+# Safety checks
+if DATABASE_URL is None:
+    DATABASE_URL = 'sqlite:///stock_screen.db'
+if not DATABASE_URL:
+    DATABASE_URL = 'sqlite:///stock_screen.db'
 
 # Use psycopg2 driver for PostgreSQL URIs
 if DATABASE_URL.startswith('postgre'):

@@ -90,8 +90,18 @@ def manage_page():
                                 session.execute(stmt)
                                 session.commit()
                                 session.close()
-                                save_metrics(metrics)
-                                st.success(f"Fetched {t}")
+                                try:
+                                    save_metrics(metrics)
+                                except Exception as e:
+                                    st.error(f"Error saving {t}: {str(e)}")
+                                    logging.error(f"Error saving metrics for {t}: {e}")
+                                    continue
+                                metrics_db = get_latest_metrics(t)
+                                if not metrics_db:
+                                    st.error(f"Failed to add/refresh {t} - check logs.")
+                                    logging.error(f"Fetch saved but not retrievable for {t}")
+                                else:
+                                    st.success(f"Successfully added/refreshed {t}.")
                             except Exception as e:
                                 logging.error(f"Failed to save stock {t}: {e}")
                                 st.error(f"Failed to save stock {t}: {e}")

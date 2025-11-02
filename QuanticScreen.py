@@ -147,6 +147,9 @@ def load_all_metrics():
 
 # Auto-fetch logic with polling
 def fetch_bg():
+    if st.session_state.get('bg_thread_started', False):
+        logging.info("Background thread already started - skipping duplicate.")
+        return
     logging.info("Starting background refresh...")
     et_tz = pytz.timezone('US/Eastern')
     now_et = datetime.now(et_tz)
@@ -190,7 +193,9 @@ def fetch_bg():
     threading.Timer(15 * 60, fetch_bg).start()
 
 # Start polling thread
-threading.Thread(target=fetch_bg, daemon=True).start()
+if not st.session_state.get('bg_thread_started', False):
+    threading.Thread(target=fetch_bg, daemon=True).start()
+    st.session_state['bg_thread_started'] = True
 
 st.title("QuanticScreen")
 

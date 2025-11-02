@@ -45,7 +45,7 @@ Session = sessionmaker(bind=engine)
 
 class Stock(Base):
     __tablename__ = 'Stocks'
-    ticker = Column(String, primary_key=True)
+    ticker = Column(String, primary_key=True, autoincrement=False)
     company_name = Column(String)
     industry = Column(String)
     sector = Column(String)  # New: Sector for filtering

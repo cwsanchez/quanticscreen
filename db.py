@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_, cast, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.dialects.sqlite import insert
@@ -448,7 +448,8 @@ def get_stale_tickers():
     """
     session = Session()
     cutoff = datetime.now() - timedelta(hours=12)
-    stale = session.query(MetricFetch.ticker).filter(MetricFetch.fetch_timestamp < cutoff).order_by(MetricFetch.fetch_timestamp).all()
+    # TODO: Migrate fetch_timestamp to DateTime column for better performance.
+    stale = session.query(MetricFetch.ticker).filter(cast(MetricFetch.fetch_timestamp, DateTime) < cutoff).order_by(MetricFetch.fetch_timestamp).all()
     session.close()
     return [t[0] for t in stale]
 def get_all_latest_metrics():

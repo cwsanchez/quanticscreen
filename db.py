@@ -8,8 +8,9 @@ import json
 import os
 import time
 import random
+import streamlit as st
 
-DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///stock_screen.db')
+DATABASE_URL = os.getenv('DB_URI') or st.secrets.get('DB_URI', 'sqlite:///stock_screen.db')
 
 # Wrap engine creation with retries
 retries = 3
@@ -95,29 +96,47 @@ def init_db():
     from sqlalchemy.sql import text
     inspector = inspect(engine)
 
-    # Drop ProcessorConfigs table if exists
-    if 'ProcessorConfigs' in inspector.get_table_names():
-        with engine.connect() as conn:
-            conn.execute(text('DROP TABLE "ProcessorConfigs"'))
-            conn.commit()
-
-    # Migration: Drop config_id column from ProcessedResults if exists
-    if 'ProcessedResults' in inspector.get_table_names():
-        columns = [col['name'] for col in inspector.get_columns('ProcessedResults')]
-        if 'config_id' in columns:
+    # Migrations wrapped in try/except
+    try:
+        # Drop ProcessorConfigs table if exists
+        if 'ProcessorConfigs' in inspector.get_table_names():
             with engine.connect() as conn:
-                conn.execute(text('ALTER TABLE "ProcessedResults" DROP COLUMN config_id'))
+                conn.execute(text('DROP TABLE "ProcessorConfigs"'))
                 conn.commit()
+    except Exception as e:
+        print(f"Migration error dropping ProcessorConfigs: {e}")
 
-    # Migration: Add p_fcf column to MetricFetches if not exists
-    if 'MetricFetches' in inspector.get_table_names():
-        columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
-        if 'p_fcf' not in columns:
-            with engine.connect() as conn:
-                conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN p_fcf FLOAT'))
-                conn.commit()
+    try:
+        # Migration: Drop config_id column from ProcessedResults if exists
+        if 'ProcessedResults' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('ProcessedResults')]
+            if 'config_id' in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "ProcessedResults" DROP COLUMN config_id'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error dropping config_id: {e}")
 
-    Base.metadata.create_all(engine)
+    try:
+        # Migration: Add p_fcf column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'p_fcf' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN p_fcf FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding p_fcf: {e}")
+
+    # Conditional table creation
+    if not inspector.has_table(Stock.__tablename__):
+        Stock.__table__.create(engine)
+    if not inspector.has_table(MetricFetch.__tablename__):
+        MetricFetch.__table__.create(engine)
+    if not inspector.has_table(Metadata.__tablename__):
+        Metadata.__table__.create(engine)
+    if not inspector.has_table(ProcessedResult.__tablename__):
+        ProcessedResult.__table__.create(engine)
     
     # Migration: Set old default timestamp for any records missing fetch_timestamp to force re-fetch on next seed
     session = Session()

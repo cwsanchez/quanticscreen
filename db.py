@@ -3,6 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.sql import text
+from sqlalchemy.exc import OperationalError
 from datetime import datetime, timedelta
 import json
 import os
@@ -11,6 +12,10 @@ import random
 import streamlit as st
 
 DATABASE_URL = os.getenv('DB_URI') or st.secrets.get('DB_URI', 'sqlite:///stock_screen.db')
+
+# Use psycopg driver for PostgreSQL URIs
+if DATABASE_URL.startswith('postgre'):
+    DATABASE_URL = DATABASE_URL.replace('postgre', 'postgresql+psycopg', 1)
 
 # Wrap engine creation with retries
 retries = 3
@@ -27,9 +32,7 @@ for attempt in range(retries):
             print(f"DB connection attempt {attempt + 1} failed: {e}. Retrying in {sleep_time}s...")
             time.sleep(sleep_time)
         else:
-            print(f"DB connection failed after {retries} attempts: {e}. Falling back to SQLite.")
-            DATABASE_URL = 'sqlite:///stock_screen.db'
-            engine = create_engine(DATABASE_URL, echo=False)
+            raise e
 
 Base = declarative_base()
 Session = sessionmaker(bind=engine)
@@ -129,14 +132,16 @@ def init_db():
         print(f"Migration error adding p_fcf: {e}")
 
     # Conditional table creation
-    if not inspector.has_table(Stock.__tablename__):
-        Stock.__table__.create(engine)
-    if not inspector.has_table(MetricFetch.__tablename__):
-        MetricFetch.__table__.create(engine)
-    if not inspector.has_table(Metadata.__tablename__):
-        Metadata.__table__.create(engine)
-    if not inspector.has_table(ProcessedResult.__tablename__):
-        ProcessedResult.__table__.create(engine)
+    tables = [Stock, MetricFetch, Metadata, ProcessedResult]
+    for table in tables:
+        if not (inspector.has_table(table.__tablename__.lower()) or inspector.has_table(table.__tablename__)):
+            try:
+                table.__table__.create(engine)
+            except OperationalError as e:
+                if 'already exists' in str(e):
+                    pass
+                else:
+                    raise
     
     # Migration: Set old default timestamp for any records missing fetch_timestamp to force re-fetch on next seed
     session = Session()

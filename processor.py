@@ -79,7 +79,7 @@ PRESETS = {
     }
 }
 
-def process_stock(metrics, config_dict=None):
+def process_stock(metrics, weights=None, selected_metrics=None, logic=DEFAULT_LOGIC):
     """
     Processes a single stock's metrics per algorithm steps 2-5.
     Returns dict with: base_score, final_score, flags (list), positives (str), risks (str), factor_boosts (dict for value/momentum/etc.).
@@ -111,67 +111,24 @@ def process_stock(metrics, config_dict=None):
     dividend = get_float(metrics, 'Dividend Yield')
     avg_volume = get_float(metrics, 'Average Volume')
 
-    # Load config or defaults
-    if config_dict is None:
-        weights = {
-            'P/E': 0.2, 'ROE': 0.15, 'D/E': 0.1, 'P/B': 0.1, 'PEG': 0.1,
-            'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.075,
-            'EBITDA % EV TTM': 0.075, 'Balance': 0.05
-        }
+    if weights is None:
+        weights = {'P/E': 0.2, 'ROE': 0.2, 'P/B': 0.1, 'PEG': 0.15, 'Gross Margin': 0.1, 'Net Profit Margin': 0.1, 'FCF % EV TTM': 0.1, 'EBITDA % EV TTM': 0.05}
+    if selected_metrics is None:
         selected_metrics = list(weights.keys())
-        logic = DEFAULT_LOGIC
-    else:
-        weights = config_dict['weights']
-        selected_metrics = config_dict['metrics']
-        logic = config_dict['logic']
+    metric_normalizers = {
+        'P/E': lambda v: max(0, min(100, 100 - (v * 2))),  # Low better, good <50
+        'ROE': lambda v: max(0, min(100, v * 4)),  # High better, good >25
+        'D/E': lambda v: max(0, min(100, 100 - (v * 50))),  # Low better, good <2
+        'P/B': lambda v: max(0, min(100, 100 - (v * 20))),  # Low better, good <5
+        'PEG': lambda v: max(0, min(100, 100 - (v * 50))),  # Low better, good <2
+        'Gross Margin': lambda v: max(0, min(100, v)),  # High better, %
+        'Net Profit Margin': lambda v: max(0, min(100, v)),  # High better, %
+        'FCF % EV TTM': lambda v: max(0, min(100, v * 10)),  # High better, good >10%
+        'EBITDA % EV TTM': lambda v: max(0, min(100, v * 10)),  # High better
+    }
 
-    # Normalize weights for selected only
-    sum_w = sum(weights.get(m, 0) for m in selected_metrics)
-    if sum_w > 0:
-        weights = {m: weights[m] / sum_w for m in selected_metrics}
-
-    # Step 2: Individual Metric Scoring (0-10)
-    # (Comments on single-metric thresholds omitted as per user: only multi-metric correlations need explanation)
-    metric_scores = {}
-    if 'P/E' in selected_metrics:
-        metric_scores['P/E'] = 10 if pe < 15 else 7 if pe < 20 else 5 if pe < 30 else 2 if pe < 40 else 0
-    if 'Forward P/E' in selected_metrics:
-        metric_scores['Forward P/E'] = 10 if forward_pe < 15 else 7 if forward_pe < 20 else 5 if forward_pe < 30 else 2 if forward_pe < 40 else 0
-    if 'ROE' in selected_metrics:
-        metric_scores['ROE'] = 10 if roe > 20 else 7 if roe >= 15 else 5 if roe >= 10 else 0
-    if 'D/E' in selected_metrics:
-        metric_scores['D/E'] = 10 if de < 0.5 else 7 if de < 1 else 5 if de < 1.5 else 0
-    if 'P/B' in selected_metrics:
-        metric_scores['P/B'] = 10 if pb < 1.5 else 7 if pb < 2.5 else 5 if pb < 4 else 0
-    if 'PEG' in selected_metrics:
-        metric_scores['PEG'] = 10 if peg < 1 else 7 if peg < 1.5 else 5 if peg < 2 else 0
-    if 'Gross Margin' in selected_metrics:
-        metric_scores['Gross Margin'] = 10 if gross > 50 else 7 if gross >= 40 else 5 if gross >= 30 else 0
-    if 'Net Profit Margin' in selected_metrics:
-        metric_scores['Net Profit Margin'] = 10 if net > 20 else 7 if net >= 15 else 5 if net >= 10 else 0
-    if 'FCF % EV TTM' in selected_metrics:
-        metric_scores['FCF % EV TTM'] = 10 if fcf_ev > 5 else 7 if fcf_ev >= 3 else 5 if fcf_ev >= 1 else 0
-    if 'EBITDA % EV TTM' in selected_metrics:
-        metric_scores['EBITDA % EV TTM'] = 10 if ebitda_ev > 10 else 7 if ebitda_ev >= 5 else 5 if ebitda_ev >= 2 else 0
-    if 'Balance' in selected_metrics:
-        metric_scores['Balance'] = 10 if (cash > 0.2 * mcap) or (price > 0.8 * high) else 0 if (debt > mcap) or (price < 1.1 * low) else 5
-    if 'P/FCF' in selected_metrics:
-        metric_scores['P/FCF'] = 10 if p_fcf < 15 else 7 if p_fcf < 20 else 5 if p_fcf < 30 else 2 if p_fcf < 40 else 0
-    if 'Revenue Growth' in selected_metrics:
-        metric_scores['Revenue Growth'] = 10 if revenue_growth > 20 else 7 if revenue_growth >= 10 else 5 if revenue_growth >= 5 else 0
-    if 'Earnings Growth' in selected_metrics:
-        metric_scores['Earnings Growth'] = 10 if earnings_growth > 20 else 7 if earnings_growth >= 10 else 5 if earnings_growth >= 5 else 0
-    if 'RSI' in selected_metrics:
-        metric_scores['RSI'] = 10 if 50 < rsi < 70 else 7 if 40 < rsi < 80 else 5 if 30 < rsi < 90 else 0
-    if 'Beta' in selected_metrics:
-        metric_scores['Beta'] = 10 if beta < 1 else 7 if beta < 1.2 else 5 if beta < 1.5 else 0
-    if 'Dividend Yield' in selected_metrics:
-        metric_scores['Dividend Yield'] = 10 if dividend > 3 else 7 if dividend >= 2 else 5 if dividend >= 1 else 0
-    if 'Average Volume' in selected_metrics:
-        metric_scores['Average Volume'] = 10 if avg_volume > 10000000 else 7 if avg_volume > 1000000 else 5 if avg_volume > 100000 else 0
-
-    # Step 3: Weighting & Base Score (0-100)
-    base_score = sum(metric_scores.get(m, 0) * weights.get(m, 0) for m in selected_metrics) * 10  # Scale to 0-100
+    norm_scores = {metric: metric_normalizers.get(metric, lambda v: 0)(get_float(metrics, metric)) for metric in selected_metrics}
+    base_score = sum(norm_scores[metric] * weights[metric] for metric in selected_metrics) / sum(weights.values()) if sum(weights.values()) > 0 else 0
 
     # Step 4: Correlations & Flags (Boost/Penalty %)
     flags = []

@@ -3,6 +3,7 @@ import time
 import logging
 import re
 import random
+from sqlalchemy.dialects.postgresql import insert
 from db import get_latest_metrics, get_stale_tickers, save_metrics, Session, Stock, MetricFetch, ProcessedResult
 from fetcher import StockFetcher
 
@@ -82,8 +83,18 @@ def manage_page():
                     try:
                         metrics = fetcher.fetch_metrics(t)
                         if metrics:
-                            save_metrics(metrics)
-                            st.success(f"Fetched {t}")
+                            try:
+                                stmt = insert(Stock).values(ticker=t, company_name=metrics.get('Company Name', 'N/A'), industry=metrics.get('Industry', 'N/A'), sector=metrics.get('Sector', 'N/A'))
+                                stmt = stmt.on_conflict_do_update(index_elements=['ticker'], set_={'company_name': metrics.get('Company Name', 'N/A'), 'industry': metrics.get('Industry', 'N/A'), 'sector': metrics.get('Sector', 'N/A')})
+                                session = Session()
+                                session.execute(stmt)
+                                session.commit()
+                                session.close()
+                                save_metrics(metrics)
+                                st.success(f"Fetched {t}")
+                            except Exception as e:
+                                logging.error(f"Failed to save stock {t}: {e}")
+                                st.error(f"Failed to save stock {t}: {e}")
                         else:
                             st.error(f"Failed to fetch {t}")
                     except Exception as e:

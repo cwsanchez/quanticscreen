@@ -365,23 +365,12 @@ def get_latest_metrics(ticker):
 def save_metrics(metrics):
     """
     Saves raw metrics to DB with current timestamp.
-    Upserts Stock (now with sector), inserts MetricFetch.
+    Inserts MetricFetch. Stock upsert handled elsewhere.
     Returns the fetch_id.
     """
     session = Session()
 
     ticker = metrics['Ticker']
-    company_name = metrics.get('Company Name', 'N/A')
-    industry = metrics.get('Industry', 'N/A')
-    sector = metrics.get('Sector', 'N/A')
-
-    # Upsert Stock
-    stmt = insert(Stock).values(ticker=ticker, company_name=company_name, industry=industry, sector=sector)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['ticker'],
-        set_={'company_name': company_name, 'industry': industry, 'sector': sector}
-    )
-    session.execute(stmt)
 
     # Insert MetricFetch
     now = datetime.now().isoformat()

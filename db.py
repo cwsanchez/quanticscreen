@@ -113,6 +113,13 @@ class ProcessedResult(Base):
 
     metric_fetch = relationship("MetricFetch")
 
+class PriceHistory(Base):
+    __tablename__ = 'PriceHistory'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String, ForeignKey('Stocks.ticker'))
+    fetch_timestamp = Column(String)
+    history_json = Column(Text)
+
 def init_db():
     """
     Initializes the database by creating tables if they don't exist.
@@ -231,7 +238,7 @@ def init_db():
         print(f"Migration error adding forward_pe: {e}")
 
     # Conditional table creation
-    tables = [Stock, MetricFetch, Metadata, ProcessedResult]
+    tables = [Stock, MetricFetch, Metadata, ProcessedResult, PriceHistory]
     for table in tables:
         if not (inspector.has_table(table.__tablename__.lower()) or inspector.has_table(table.__tablename__)):
             try:
@@ -362,6 +369,50 @@ def get_latest_metrics(ticker):
         return metrics
     return None
 
+def prune_old_metrics(tickers=None, keep_days=7):
+    """
+    Deletes MetricFetches and ProcessedResults older than keep_days.
+    If tickers provided, filters to those; else all.
+    Always keeps the latest fetch per ticker even if old.
+    Uses subqueries for cascades, logs counts deleted.
+    """
+    session = Session()
+    try:
+        cutoff = datetime.now() - timedelta(days=keep_days)
+        # Get latest fetch_id per ticker to keep
+        if tickers:
+            latest_subq = session.query(
+                MetricFetch.ticker,
+                func.max(MetricFetch.fetch_timestamp).label('max_ts')
+            ).filter(MetricFetch.ticker.in_(tickers)).group_by(MetricFetch.ticker).subquery()
+        else:
+            latest_subq = session.query(
+                MetricFetch.ticker,
+                func.max(MetricFetch.fetch_timestamp).label('max_ts')
+            ).group_by(MetricFetch.ticker).subquery()
+        latest_ids = session.query(MetricFetch.fetch_id).join(
+            latest_subq,
+            and_(MetricFetch.ticker == latest_subq.c.ticker, MetricFetch.fetch_timestamp == latest_subq.c.max_ts)
+        ).all()
+        keep_ids = [row[0] for row in latest_ids]
+        # Delete ProcessedResults where fetch_id not in keep_ids and fetch_timestamp < cutoff
+        deleted_processed = session.query(ProcessedResult).join(MetricFetch, ProcessedResult.fetch_id == MetricFetch.fetch_id).filter(
+            ProcessedResult.fetch_id.notin_(keep_ids),
+            cast(MetricFetch.fetch_timestamp, DateTime) < cutoff
+        ).delete(synchronize_session=False)
+        # Delete MetricFetches not in keep_ids and fetch_timestamp < cutoff
+        deleted_fetches = session.query(MetricFetch).filter(
+            MetricFetch.fetch_id.notin_(keep_ids),
+            cast(MetricFetch.fetch_timestamp, DateTime) < cutoff
+        ).delete(synchronize_session=False)
+        session.commit()
+        logging.info(f"Pruned {deleted_fetches} MetricFetches and {deleted_processed} ProcessedResults older than {keep_days} days.")
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error pruning old metrics: {e}")
+    finally:
+        session.close()
+
 def save_metrics(metrics):
     """
     Saves raw metrics to DB with current timestamp.
@@ -408,6 +459,8 @@ def save_metrics(metrics):
     session.commit()
     fetch_id = fetch.fetch_id
     session.close()
+    # Prune old metrics after save
+    prune_old_metrics(tickers=[ticker])
     return fetch_id
 
 def get_metadata(key):
@@ -452,6 +505,31 @@ def get_stale_tickers():
     stale = session.query(MetricFetch.ticker).filter(cast(MetricFetch.fetch_timestamp, DateTime) < cutoff).order_by(MetricFetch.fetch_timestamp).all()
     session.close()
     return [t[0] for t in stale]
+def get_price_history(ticker):
+    """
+    Retrieves the latest price history for a ticker if fetched <24 hours ago.
+    Returns list of {'date':str, 'close':float} or None if no recent data.
+    """
+    session = Session()
+    latest = session.query(PriceHistory).filter_by(ticker=ticker).order_by(desc(PriceHistory.fetch_timestamp)).first()
+    session.close()
+    if latest:
+        fetch_time = datetime.fromisoformat(latest.fetch_timestamp)
+        if datetime.now() - fetch_time < timedelta(hours=24):
+            return json.loads(latest.history_json)
+    return None
+
+def save_price_history(ticker, history_list):
+    """
+    Saves price history to DB with current timestamp.
+    """
+    session = Session()
+    now = datetime.now().isoformat()
+    ph = PriceHistory(ticker=ticker, fetch_timestamp=now, history_json=json.dumps(history_list))
+    session.add(ph)
+    session.commit()
+    session.close()
+
 def get_all_latest_metrics():
     session = Session()
     if session.query(Stock).count() == 0:

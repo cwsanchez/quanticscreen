@@ -5,7 +5,7 @@ import re
 import random
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import select
-from db import get_latest_metrics, get_stale_tickers, save_metrics, Session, Stock, MetricFetch, ProcessedResult
+from db import get_latest_metrics, get_stale_tickers, save_metrics, Session, Stock, MetricFetch, ProcessedResult, prune_old_metrics
 from fetcher import StockFetcher
 
 def manage_page():
@@ -60,6 +60,8 @@ def manage_page():
                             progress.progress(done / total)
                         time.sleep(random.randint(5, 10))
                     st.success("Manual refresh completed.")
+                    # Prune old metrics after manual refresh
+                    prune_old_metrics()
 
     # Fetch New Stocks
     st.subheader("Fetch New Stocks")
@@ -143,4 +145,12 @@ def manage_page():
                         logging.error(f"Delete error for {ticker}: {e}")
                     finally:
                         session.close()
+
+    # Prune Old Metrics
+    st.subheader("Prune Old Metrics")
+    if st.button("Prune Old Metrics"):
+        with st.spinner("Pruning old metrics..."):
+            prune_old_metrics()
+        st.success("Pruning completed.")
+
 manage_page()

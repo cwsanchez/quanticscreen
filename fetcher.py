@@ -112,6 +112,28 @@ class StockFetcher:
             self.logger.error(f"All attempts failed for {ticker}")
             return {}
 
+    def fetch_history(self, ticker, period='1y'):
+        """
+        Fetches price history for a ticker using yfinance.
+        Returns list of {'date':str, 'close':float} or empty list on error.
+        """
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period=period)
+            if hist.empty:
+                self.logger.warning(f"No history data for {ticker}")
+                return []
+            history_list = []
+            for date, row in hist.iterrows():
+                history_list.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'close': float(row['Close'])
+                })
+            return history_list
+        except Exception as e:
+            self.logger.error(f"Failed to fetch history for {ticker}: {e}")
+            return []
+
 # Test
 if __name__ == "__main__":
     import json

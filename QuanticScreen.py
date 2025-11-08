@@ -1,10 +1,10 @@
 import streamlit as st
 import json
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, get_all_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, get_all_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers, prune_old_metrics, get_price_history, save_price_history
 import logging
 logging.basicConfig(level=logging.INFO)
 logging.info("Successfully imported get_all_latest_metrics")
-from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS
+from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS, CONDITIONS, format_large
 import pandas as pd
 import numpy as np  # For np.nan
 import io  # For CSV export
@@ -175,19 +175,35 @@ def fetch_bg():
             threading.Timer(15 * 60, fetch_bg).start()
             return
         fetcher = StockFetcher()
-        batch_size = random.randint(5, 10)
-        for i in range(0, len(stale_tickers), batch_size):
-            batch = stale_tickers[i:i + batch_size]
-            for t in batch:
-                try:
-                    metrics = fetcher.fetch_metrics(t)
-                    if metrics:
-                        save_metrics(metrics)
-                        logging.info(f"Fetched and updated {t}.")
-                except Exception as e:
-                    logging.error(f"Error fetching {t}: {e}")
-                time.sleep(random.randint(5, 10))
-            time.sleep(random.randint(5, 10))
+        chunk_size = 30  # Process in chunks of 30
+        batch_size = random.randint(3, 5)
+        total_stale = len(stale_tickers)
+        logging.info(f"Processing {total_stale} stale tickers in chunks of {chunk_size}.")
+        for i in range(0, total_stale, chunk_size):
+            chunk = stale_tickers[i:i + chunk_size]
+            processed_tickers = []
+            for j in range(0, len(chunk), batch_size):
+                batch = chunk[j:j + batch_size]
+                for t in batch:
+                    try:
+                        metrics = fetcher.fetch_metrics(t)
+                        if metrics:
+                            save_metrics(metrics)
+                            logging.info(f"Fetched and updated {t}.")
+                            processed_tickers.append(t)
+                    except Exception as e:
+                        logging.error(f"Error fetching {t}: {e}")
+                    time.sleep(random.randint(10, 30))  # Sleep per ticker
+                time.sleep(random.randint(30, 60))  # Sleep per batch
+            # After chunk, prune old metrics for processed tickers
+            if processed_tickers:
+                prune_old_metrics(tickers=processed_tickers)
+                logging.info(f"Pruned old metrics for chunk of {len(processed_tickers)} tickers.")
+            # If more chunks and total >50, sleep before next chunk
+            if i + chunk_size < total_stale and total_stale > 50:
+                sleep_time = random.randint(15 * 60, 30 * 60)
+                logging.info(f"More chunks remaining, sleeping {sleep_time}s before next chunk.")
+                time.sleep(sleep_time)
         set_metadata('last_fetch_time', datetime.now().isoformat())
     # Schedule next poll in 15 mins
     threading.Timer(15 * 60, fetch_bg).start()
@@ -201,29 +217,78 @@ st.title("QuanticScreen")
 
 st.info("Loading large datasets may take time; consider filtering for faster results.")
 
+# Search Ticker for Summary
+search_ticker = st.text_input("Search Ticker", value="", key='search_ticker')
+
+if search_ticker:
+    ticker = search_ticker.upper().strip()
+    if ticker:
+        metrics = get_latest_metrics(ticker)
+        if not metrics or datetime.now() - datetime.fromisoformat(metrics['fetch_timestamp']) > timedelta(hours=24):
+            with st.spinner("Fetching data..."):
+                fetcher = StockFetcher()
+                new_metrics = fetcher.fetch_metrics(ticker)
+                if new_metrics:
+                    save_metrics(new_metrics)
+                    metrics = get_latest_metrics(ticker)
+                    logging.info(f"Fetched and saved metrics for {ticker}")
+                time.sleep(random.randint(5, 10))
+        if metrics:
+            if 'weights' not in st.session_state or 'selected_metrics' not in st.session_state or 'logic' not in st.session_state:
+                logging.info("Using fallback config for summary processing")
+            processed = process_stock(metrics, st.session_state.get('weights', default_weights), st.session_state.get('selected_metrics', default_metrics), st.session_state.get('logic', DEFAULT_LOGIC))
+            history = get_price_history(ticker)
+            if not history:
+                with st.spinner("Fetching price history..."):
+                    fetcher = StockFetcher()
+                    history = fetcher.fetch_history(ticker)
+                    if history:
+                        save_price_history(ticker, history)
+                        logging.info(f"Fetched and saved history for {ticker}")
+                    time.sleep(random.randint(5, 10))
+            with st.expander(f"Summary for {ticker}"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Company:** {metrics['Company Name']}")
+                    st.write(f"**Sector:** {metrics['Sector']}")
+                    st.write(f"**P/E:** {metrics['P/E']}")
+                    st.write(f"**ROE:** {metrics['ROE']}%")
+                    st.write(f"**P/B:** {metrics['P/B']}")
+                with col2:
+                    st.write(f"**PEG:** {metrics['PEG']}")
+                    st.write(f"**Gross Margin:** {metrics['Gross Margin']}%")
+                    st.write(f"**Market Cap:** {format_large(get_float(metrics, 'Market Cap'))}")
+                    st.write(f"**EV:** {format_large(get_float(metrics, 'EV'))}")
+                st.write(f"**Flags:** {', '.join(processed['flags'])}")
+                st.write(f"**Positives:** {processed['positives']}")
+                current = get_float(metrics, 'Current Price')
+                low = get_float(metrics, '52W Low')
+                high = get_float(metrics, '52W High')
+                if current != 'N/A' and low != 'N/A' and high != 'N/A':
+                    st.metric("Current Price", f"${current:.2f}")
+                    range_ = high - low
+                    if range_ > 0:
+                        pos = (current - low) / range_
+                        left_dashes = int(pos * 20)
+                        right_dashes = 20 - left_dashes
+                        bar = f"[52W Low: ${low:.2f}] {'─' * left_dashes}|{'─' * right_dashes} [52W High: ${high:.2f}]"
+                        st.markdown(f"<div style='font-family: monospace;'>{bar}</div>", unsafe_allow_html=True)
+                if history:
+                    df_hist = pd.DataFrame(history)
+                    df_hist['date'] = pd.to_datetime(df_hist['date'])
+                    df_hist.set_index('date', inplace=True)
+                    min_close = df_hist['close'].min()
+                    max_close = df_hist['close'].max()
+                    st.line_chart(df_hist['close'])
+                    st.write(f"**Min Close:** ${min_close:.2f} **Max Close:** ${max_close:.2f}")
+
 with st.sidebar:
     st.sidebar.title("QuanticScreen")
-    dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()))
-    if dataset == "Sector":
-        sectors = get_unique_sectors()
-        selected_sector = st.selectbox("Select Sector", sectors)
-
-    # Initialize configs in session state
-    if 'configs' not in st.session_state:
-        st.session_state.configs = {}
-
-    preset_options = ["Overall", "Value", "Growth", "Momentum", "Quality"]
-    custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
-    config_options = preset_options + custom_configs
-    config_name = st.selectbox("Select Config", config_options, index=0)
-    num_top = st.slider("Top N Stocks", 1, 200, 100)
-    show_all = st.checkbox("Show All (Ignore Top N)")
-    exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)")
 
     # Custom Sets
     st.subheader("Create Custom Set")
-    set_name = st.text_input("Set Name")
-    ticker_input = st.text_area("Comma-separated Tickers (e.g., AAPL,MSFT)")
+    set_name = st.text_input("Set Name", key='set_name')
+    ticker_input = st.text_area("Comma-separated Tickers (e.g., AAPL,MSFT)", key='ticker_input')
     if st.button("Create Set"):
         if set_name and ticker_input:
             input_tickers = [t.strip().upper() for t in ticker_input.split(',')]
@@ -247,6 +312,35 @@ with st.sidebar:
         else:
             st.error("Provide a name and tickers.")
 
+
+    options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())
+    default_dataset = st.session_state.get('dataset', "All")
+    index_dataset = options.index(default_dataset) if default_dataset in options else 0
+    dataset = st.selectbox("Select Dataset", options, index=index_dataset, key='dataset')
+    if dataset == "Sector":
+        sectors = get_unique_sectors()
+        default_sector = st.session_state.get('selected_sector')
+        index_sector = sectors.index(default_sector) if default_sector and default_sector in sectors else 0
+        selected_sector = st.selectbox("Select Sector", sectors, index=index_sector, key='selected_sector')
+
+    # Initialize configs in session state
+    if 'configs' not in st.session_state:
+        st.session_state.configs = {}
+
+    preset_options = ["Overall", "Value", "Growth", "Momentum", "Quality"]
+    custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
+    config_options = preset_options + custom_configs
+    default_config = st.session_state.get('config_name', "Overall")
+    index_config = config_options.index(default_config) if default_config in config_options else 0
+    config_name = st.selectbox("Select Config", config_options, index=index_config, key='config_name')
+    num_top = st.slider("Top N Stocks", 1, 200, value=st.session_state.get('num_top', 100), key='num_top')
+    show_all = st.checkbox("Show All (Ignore Top N)", value=st.session_state.get('show_all', False), key='show_all')
+    exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)", value=st.session_state.get('exclude_negative', False), key='exclude_negative')
+
+    # Flag filtering
+    require_flags = st.multiselect("Require Flags", list(CONDITIONS.keys()), default=st.session_state.get('require_flags', []), key='require_flags')
+    match_type = st.radio("Match", ["Any", "All"], index=0 if st.session_state.get('match_type', "Any") == "Any" else 1, key='match_type')
+
 # Get metrics and process on the fly
 if db_empty:
     metrics_list = sample_metrics
@@ -266,6 +360,11 @@ else:
 weights = config['weights']
 selected_metrics = config['metrics']
 logic = config['logic']
+
+# Store config in session_state for summary access
+st.session_state.weights = weights
+st.session_state.selected_metrics = selected_metrics
+st.session_state.logic = logic
 
 results = []
 with st.spinner('Processing stocks...'):
@@ -298,14 +397,17 @@ elif dataset == "Sector":
 
 
 # Additional filters
-search = st.text_input("Search Ticker/Company")
+search = st.text_input("Search Ticker/Company", value=st.session_state.get('search', ""), key='search')
 if search:
     results = [r for r in results if search.lower() in r['metrics']['Ticker'].lower() or search.lower() in r['metrics']['Company Name'].lower()]
 
-unique_flags = sorted(set(flag for res in results for flag in res['flags']))
-selected_flags = st.multiselect("Filter by Flags", unique_flags)
-if selected_flags:
-    results = [r for r in results if any(flag in r['flags'] for flag in selected_flags)]
+# Apply flag filters
+if require_flags:
+    if match_type == "Any":
+        results = [r for r in results if any(flag in r['flags'] for flag in require_flags)]
+    else:
+        results = [r for r in results if all(flag in r['flags'] for flag in require_flags)]
+    logging.info(f"Applied flag filter: {require_flags} with {match_type} logic, {len(results)} results remaining.")
 
 # Exclude negative flags if checked
 negative_flags = {"Value Trap", "High-Risk Growth", "Debt Burden"}  # Define negatives
@@ -319,15 +421,6 @@ top_results = results if show_all else results[:num_top]
 # Disclaimer for search
 if search and not top_results:
     st.info("No matches found. Note: Results are ranked by score; low-scoring stocks may not appear unless 'Show All' is checked.")
-
-# Helper to format large numbers as B/M (returns str)
-def format_large(val):
-    if val >= 1e9:
-        return f"{round(val / 1e9, 2)}B"
-    elif val >= 1e6:
-        return f"{round(val / 1e6, 2)}M"
-    else:
-        return f"{round(val, 2)}"
 
 # Display ranked table using pandas (added new columns, combined 52W for space)
 if top_results:

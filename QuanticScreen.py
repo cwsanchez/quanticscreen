@@ -4,7 +4,7 @@ from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics,
 import logging
 logging.basicConfig(level=logging.INFO)
 logging.info("Successfully imported get_all_latest_metrics")
-from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS
+from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS, CONDITIONS
 import pandas as pd
 import numpy as np  # For np.nan
 import io  # For CSV export
@@ -219,10 +219,10 @@ st.info("Loading large datasets may take time; consider filtering for faster res
 
 with st.sidebar:
     st.sidebar.title("QuanticScreen")
-    dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()))
+    dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()), value=st.session_state.get('dataset', "All"), key='dataset')
     if dataset == "Sector":
         sectors = get_unique_sectors()
-        selected_sector = st.selectbox("Select Sector", sectors)
+        selected_sector = st.selectbox("Select Sector", sectors, value=st.session_state.get('selected_sector'), key='selected_sector')
 
     # Initialize configs in session state
     if 'configs' not in st.session_state:
@@ -231,15 +231,19 @@ with st.sidebar:
     preset_options = ["Overall", "Value", "Growth", "Momentum", "Quality"]
     custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
     config_options = preset_options + custom_configs
-    config_name = st.selectbox("Select Config", config_options, index=0)
-    num_top = st.slider("Top N Stocks", 1, 200, 100)
-    show_all = st.checkbox("Show All (Ignore Top N)")
-    exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)")
+    config_name = st.selectbox("Select Config", config_options, value=st.session_state.get('config_name', "Overall"), key='config_name')
+    num_top = st.slider("Top N Stocks", 1, 200, value=st.session_state.get('num_top', 100), key='num_top')
+    show_all = st.checkbox("Show All (Ignore Top N)", value=st.session_state.get('show_all', False), key='show_all')
+    exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)", value=st.session_state.get('exclude_negative', False), key='exclude_negative')
+
+    # Flag filtering
+    require_flags = st.multiselect("Require Flags", list(CONDITIONS.keys()), default=st.session_state.get('require_flags', []), key='require_flags')
+    match_type = st.radio("Match", ["Any", "All"], index=0 if st.session_state.get('match_type', "Any") == "Any" else 1, key='match_type')
 
     # Custom Sets
     st.subheader("Create Custom Set")
-    set_name = st.text_input("Set Name")
-    ticker_input = st.text_area("Comma-separated Tickers (e.g., AAPL,MSFT)")
+    set_name = st.text_input("Set Name", key='set_name')
+    ticker_input = st.text_area("Comma-separated Tickers (e.g., AAPL,MSFT)", key='ticker_input')
     if st.button("Create Set"):
         if set_name and ticker_input:
             input_tickers = [t.strip().upper() for t in ticker_input.split(',')]
@@ -262,6 +266,44 @@ with st.sidebar:
                 st.error("No valid tickers provided. Tickers should be 1-5 uppercase letters, optionally with '.' or '-'.")
         else:
             st.error("Provide a name and tickers.")
+
+    # Custom Filters
+    st.subheader("Custom Filters")
+    custom_filter_name = st.text_input("Custom Filter Name", key='custom_filter_name')
+    if st.button("Save Current Filters"):
+        if custom_filter_name:
+            current_filters = {
+                'dataset': st.session_state.get('dataset'),
+                'selected_sector': st.session_state.get('selected_sector') if st.session_state.get('dataset') == "Sector" else None,
+                'config_name': st.session_state.get('config_name'),
+                'num_top': st.session_state.get('num_top'),
+                'show_all': st.session_state.get('show_all'),
+                'exclude_negative': st.session_state.get('exclude_negative'),
+                'require_flags': st.session_state.get('require_flags'),
+                'match_type': st.session_state.get('match_type'),
+                'search': st.session_state.get('search')
+            }
+            if 'custom_filters' not in st.session_state:
+                st.session_state.custom_filters = {}
+            st.session_state.custom_filters[custom_filter_name] = current_filters
+            st.success(f"Saved filter '{custom_filter_name}'")
+            logging.info(f"Saved custom filter: {custom_filter_name}")
+    load_filter = st.selectbox("Load Custom Filter", [""] + list(st.session_state.get('custom_filters', {}).keys()), key='load_filter')
+    if load_filter and load_filter != "":
+        loaded = st.session_state.custom_filters[load_filter]
+        st.session_state.dataset = loaded['dataset']
+        if loaded['selected_sector']:
+            st.session_state.selected_sector = loaded['selected_sector']
+        st.session_state.config_name = loaded['config_name']
+        st.session_state.num_top = loaded['num_top']
+        st.session_state.show_all = loaded['show_all']
+        st.session_state.exclude_negative = loaded['exclude_negative']
+        st.session_state.require_flags = loaded['require_flags']
+        st.session_state.match_type = loaded['match_type']
+        st.session_state.search = loaded['search']
+        st.success(f"Loaded filter '{load_filter}'")
+        logging.info(f"Loaded custom filter: {load_filter}")
+        st.rerun()
 
 # Get metrics and process on the fly
 if db_empty:
@@ -314,14 +356,17 @@ elif dataset == "Sector":
 
 
 # Additional filters
-search = st.text_input("Search Ticker/Company")
+search = st.text_input("Search Ticker/Company", value=st.session_state.get('search', ""), key='search')
 if search:
     results = [r for r in results if search.lower() in r['metrics']['Ticker'].lower() or search.lower() in r['metrics']['Company Name'].lower()]
 
-unique_flags = sorted(set(flag for res in results for flag in res['flags']))
-selected_flags = st.multiselect("Filter by Flags", unique_flags)
-if selected_flags:
-    results = [r for r in results if any(flag in r['flags'] for flag in selected_flags)]
+# Apply flag filters
+if require_flags:
+    if match_type == "Any":
+        results = [r for r in results if any(flag in r['flags'] for flag in require_flags)]
+    else:
+        results = [r for r in results if all(flag in r['flags'] for flag in require_flags)]
+    logging.info(f"Applied flag filter: {require_flags} with {match_type} logic, {len(results)} results remaining.")
 
 # Exclude negative flags if checked
 negative_flags = {"Value Trap", "High-Risk Growth", "Debt Burden"}  # Define negatives

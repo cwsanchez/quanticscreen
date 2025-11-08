@@ -249,16 +249,22 @@ if search_ticker:
             with st.expander(f"Summary for {ticker}"):
                 # List all metrics in two columns, rounded to 2 decimals where float, skip internals
                 skip_keys = {'fetch_timestamp', 'fetch_id'}
+                large_value_keys = ['Market Cap', 'EV', 'Total Cash', 'Total Debt', 'FCF Actual', 'EBITDA Actual', 'Average Volume']
                 metric_items = [(k, v) for k, v in metrics.items() if k not in skip_keys]
                 col1, col2 = st.columns(2)
                 half = len(metric_items) // 2
                 for i, (key, val) in enumerate(metric_items):
                     col = col1 if i < half else col2
                     with col:
-                        if isinstance(val, (int, float)) and val != 'N/A':
-                            st.write(f"**{key}:** {round(val, 2)}")
+                        if val == 'N/A':
+                            display_val = 'N/A'
+                        elif key in large_value_keys:
+                            display_val = format_large(round(float(val), 2))
+                        elif isinstance(val, (int, float)):
+                            display_val = f"{round(float(val), 2)}"
                         else:
-                            st.write(f"**{key}:** {val}")
+                            display_val = val
+                        st.write(f"**{key}:** {display_val}")
                 st.write(f"**Flags:** {', '.join(processed['flags'])}")
                 st.write(f"**Positives:** {processed['positives']}")
                 current = get_float(metrics, 'Current Price')

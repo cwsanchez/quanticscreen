@@ -218,22 +218,30 @@ st.title("QuanticScreen")
 st.info("Loading large datasets may take time; consider filtering for faster results.")
 
 # Search Ticker for Summary
-search_ticker = st.text_input("Search Ticker", value="", key='search_ticker')
+summary_search = st.text_input("Search Ticker Summary", value="", key='summary_search')
 
-if search_ticker:
-    ticker = search_ticker.upper().strip()
-    if ticker:
-        metrics = get_latest_metrics(ticker)
-        if not metrics or datetime.now() - datetime.fromisoformat(metrics['fetch_timestamp']) > timedelta(hours=24):
-            with st.spinner("Fetching data..."):
-                fetcher = StockFetcher()
-                new_metrics = fetcher.fetch_metrics(ticker)
-                if new_metrics:
-                    save_metrics(new_metrics)
-                    metrics = get_latest_metrics(ticker)
-                    logging.info(f"Fetched and saved metrics for {ticker}")
-                time.sleep(random.randint(5, 10))
-        if metrics:
+if summary_search:
+    all_tickers = get_all_tickers()
+    matches = [t for t in all_tickers if re.search(re.escape(summary_search), t, re.IGNORECASE)]
+    if matches:
+        selected = st.multiselect("Select from Matches", options=matches, max_selections=1, key='selected_matches')
+        if st.button("View Summary"):
+            if selected:
+                st.session_state.selected_ticker = selected[0]
+
+if 'selected_ticker' in st.session_state:
+    ticker = st.session_state.selected_ticker
+    metrics = get_latest_metrics(ticker)
+    if not metrics or datetime.now() - datetime.fromisoformat(metrics['fetch_timestamp']) > timedelta(hours=24):
+        with st.spinner("Fetching data..."):
+            fetcher = StockFetcher()
+            new_metrics = fetcher.fetch_metrics(ticker)
+            if new_metrics:
+                save_metrics(new_metrics)
+                metrics = get_latest_metrics(ticker)
+                logging.info(f"Fetched and saved metrics for {ticker}")
+            time.sleep(random.randint(5, 10))
+    if metrics:
             if 'weights' not in st.session_state or 'selected_metrics' not in st.session_state or 'logic' not in st.session_state:
                 logging.info("Using fallback config for summary processing")
             processed = process_stock(metrics, st.session_state.get('weights', default_weights), st.session_state.get('selected_metrics', default_metrics), st.session_state.get('logic', DEFAULT_LOGIC))
@@ -349,6 +357,26 @@ if search_ticker:
                     df_rank = pd.DataFrame(data, index=['Value', 'Growth', 'Momentum', 'Quality'])
                     st.table(df_rank)
 
+def on_dataset_change():
+    if st.session_state.dataset in st.session_state.get('custom_sets', {}):
+        custom_tickers = st.session_state.custom_sets[st.session_state.dataset]
+        all_tickers_db = get_all_tickers()
+        missing = [t for t in custom_tickers if t not in all_tickers_db]
+        if missing:
+            st.warning(f"Refreshing missing tickers: {', '.join(missing)}")
+            logging.info(f"Missing tickers in custom set {st.session_state.dataset}: {missing}")
+            fetcher = StockFetcher()
+            for t in missing:
+                try:
+                    metrics = fetcher.fetch_metrics(t)
+                    if metrics:
+                        save_metrics(metrics)
+                        logging.info(f"Fetched and saved {t}")
+                    time.sleep(random.randint(5,10))
+                except Exception as e:
+                    logging.error(f"Error fetching {t}: {e}")
+            st.rerun()
+
 with st.sidebar:
     st.sidebar.title("QuanticScreen")
 
@@ -372,7 +400,7 @@ with st.sidebar:
     options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())
     default_dataset = st.session_state.get('dataset', "All")
     index_dataset = options.index(default_dataset) if default_dataset in options else 0
-    dataset = st.selectbox("Select Dataset", options, index=index_dataset, key='dataset')
+    dataset = st.selectbox("Select Dataset", options, index=index_dataset, key='dataset', on_change=on_dataset_change)
     if dataset == "Sector":
         sectors = get_unique_sectors()
         default_sector = st.session_state.get('selected_sector')

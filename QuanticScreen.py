@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, get_all_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, get_all_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers, prune_old_metrics
 import logging
 logging.basicConfig(level=logging.INFO)
 logging.info("Successfully imported get_all_latest_metrics")
@@ -175,19 +175,35 @@ def fetch_bg():
             threading.Timer(15 * 60, fetch_bg).start()
             return
         fetcher = StockFetcher()
-        batch_size = random.randint(5, 10)
-        for i in range(0, len(stale_tickers), batch_size):
-            batch = stale_tickers[i:i + batch_size]
-            for t in batch:
-                try:
-                    metrics = fetcher.fetch_metrics(t)
-                    if metrics:
-                        save_metrics(metrics)
-                        logging.info(f"Fetched and updated {t}.")
-                except Exception as e:
-                    logging.error(f"Error fetching {t}: {e}")
-                time.sleep(random.randint(5, 10))
-            time.sleep(random.randint(5, 10))
+        chunk_size = 30  # Process in chunks of 30
+        batch_size = random.randint(3, 5)
+        total_stale = len(stale_tickers)
+        logging.info(f"Processing {total_stale} stale tickers in chunks of {chunk_size}.")
+        for i in range(0, total_stale, chunk_size):
+            chunk = stale_tickers[i:i + chunk_size]
+            processed_tickers = []
+            for j in range(0, len(chunk), batch_size):
+                batch = chunk[j:j + batch_size]
+                for t in batch:
+                    try:
+                        metrics = fetcher.fetch_metrics(t)
+                        if metrics:
+                            save_metrics(metrics)
+                            logging.info(f"Fetched and updated {t}.")
+                            processed_tickers.append(t)
+                    except Exception as e:
+                        logging.error(f"Error fetching {t}: {e}")
+                    time.sleep(random.randint(10, 30))  # Sleep per ticker
+                time.sleep(random.randint(30, 60))  # Sleep per batch
+            # After chunk, prune old metrics for processed tickers
+            if processed_tickers:
+                prune_old_metrics(tickers=processed_tickers)
+                logging.info(f"Pruned old metrics for chunk of {len(processed_tickers)} tickers.")
+            # If more chunks and total >50, sleep before next chunk
+            if i + chunk_size < total_stale and total_stale > 50:
+                sleep_time = random.randint(15 * 60, 30 * 60)
+                logging.info(f"More chunks remaining, sleeping {sleep_time}s before next chunk.")
+                time.sleep(sleep_time)
         set_metadata('last_fetch_time', datetime.now().isoformat())
     # Schedule next poll in 15 mins
     threading.Timer(15 * 60, fetch_bg).start()

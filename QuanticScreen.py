@@ -344,22 +344,13 @@ st.title("QuanticScreen")
 st.info("Loading large datasets may take time; consider filtering for faster results.")
 
 # Search Ticker for Summary
-search_query = st.text_input("Search Ticker Summary", key='summary_search_query', value=st.session_state.get('summary_search_query', ''))
-
-if search_query:
-    all_tickers = get_all_tickers()
-    filtered_tickers = [t for t in all_tickers if search_query.lower() in t.lower()]
-    index = filtered_tickers.index(st.session_state.get('selected_ticker')) if st.session_state.get('selected_ticker') in filtered_tickers else (0 if filtered_tickers else None)
-    selected_ticker = st.selectbox("Select Ticker", options=filtered_tickers, index=index, key='summary_selected_ticker')
+all_tickers = get_all_tickers()
+if all_tickers:
+    selected_ticker = st.selectbox("Search Ticker Summary", options=all_tickers, index=None, key='summary_selected_ticker')
     if selected_ticker:
-        if st.button("View Summary"):
-            st.session_state.selected_ticker = selected_ticker
-            st.session_state.summary_search_query = selected_ticker
-            logging.info(f"Viewing summary for {selected_ticker}")
-            display_ticker_summary(selected_ticker)
+        display_ticker_summary(selected_ticker)
 else:
-    if 'summary_search_query' in st.session_state:
-        del st.session_state.summary_search_query
+    st.write('No tickers available')
 
 if 'selected_ticker' in st.session_state:
     ticker = st.session_state.selected_ticker

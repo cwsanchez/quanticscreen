@@ -266,7 +266,7 @@ if search_ticker:
                             display_val = val
                         st.write(f"**{key}:** {display_val}")
                 st.write(f"**Flags:** {', '.join(processed['flags'])}")
-                st.write(f"**Positives:** {processed['positives']}")
+                st.write(f"**Positives:** {'; '.join(processed['positives'])}")
                 current = get_float(metrics, 'Current Price')
                 low = get_float(metrics, '52W Low')
                 high = get_float(metrics, '52W High')
@@ -473,15 +473,7 @@ if top_results:
     df_data = []
     for res in top_results:
         m = res['metrics']
-        # Dynamic positives based on key strengths (handle N/A with get_float)
-        positives = []
-        if "Undervalued" in res['flags']:
-            positives.append(f"Undervalued with P/E {round(get_float(m, 'P/E'), 2)} and ROE {round(get_float(m, 'ROE'), 2)}%")
-        if "Quality Moat" in res['flags']:
-            positives.append(f"Quality moat with margins {round(get_float(m, 'Gross Margin'), 2)}%/{round(get_float(m, 'Net Profit Margin'), 2)}%")
-        if "Strong Balance Sheet" in res['flags']:
-            positives.append(f"Strong balance with D/E {round(get_float(m, 'D/E'), 2)}")
-        positives_str = "; ".join(positives) if positives else "Solid fundamentals."
+        positives_str = '; '.join(res['positives'])
         
         df_data.append({
             "Company (Ticker)": f"{m['Company Name']} ({m['Ticker']})",

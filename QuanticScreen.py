@@ -136,6 +136,132 @@ sample_metrics = [
         'fetch_id': None
     }
 ]
+def display_ticker_summary(ticker):
+    metrics = get_latest_metrics(ticker)
+    if not metrics or datetime.now() - datetime.fromisoformat(metrics['fetch_timestamp']) > timedelta(hours=24):
+        with st.spinner("Fetching data..."):
+            fetcher = StockFetcher()
+            new_metrics = fetcher.fetch_metrics(ticker)
+            if new_metrics:
+                save_metrics(new_metrics)
+                metrics = get_latest_metrics(ticker)
+                logging.info(f"Fetched and saved metrics for {ticker}")
+            time.sleep(random.randint(5, 10))
+    if metrics:
+        if 'weights' not in st.session_state or 'selected_metrics' not in st.session_state or 'logic' not in st.session_state:
+            logging.info("Using fallback config for summary processing")
+        processed = process_stock(metrics, st.session_state.get('weights', default_weights), st.session_state.get('selected_metrics', default_metrics), st.session_state.get('logic', DEFAULT_LOGIC))
+        history = get_price_history(ticker)
+        if not history:
+            with st.spinner("Fetching price history..."):
+                fetcher = StockFetcher()
+                history = fetcher.fetch_history(ticker)
+                if history:
+                    save_price_history(ticker, history)
+                    logging.info(f"Fetched and saved history for {ticker}")
+                time.sleep(random.randint(5, 10))
+        with st.expander(f"Summary for {ticker}"):
+            # List all metrics in two columns, rounded to 2 decimals where float, skip internals
+            skip_keys = {'fetch_timestamp', 'fetch_id'}
+            large_value_keys = ['Market Cap', 'EV', 'Total Cash', 'Total Debt', 'FCF Actual', 'EBITDA Actual', 'Average Volume']
+            metric_items = [(k, v) for k, v in metrics.items() if k not in skip_keys]
+            col1, col2 = st.columns(2)
+            half = len(metric_items) // 2
+            for i, (key, val) in enumerate(metric_items):
+                col = col1 if i < half else col2
+                with col:
+                    if val == 'N/A':
+                        display_val = 'N/A'
+                    elif key in large_value_keys:
+                        display_val = format_large(round(float(val), 2))
+                    elif isinstance(val, (int, float)):
+                        display_val = f"{round(float(val), 2)}"
+                    else:
+                        display_val = val
+                    st.write(f"**{key}:** {display_val}")
+            st.write(f"**Flags:** {', '.join(processed['flags'])}")
+            st.subheader("Positives")
+            positives = processed['positives']
+            if isinstance(positives, str):
+                positives_list = positives.split('; ')
+            else:
+                positives_list = positives
+            if positives_list:
+                for positive in positives_list:
+                    st.markdown(f"- {positive.strip()}")
+            else:
+                st.write("No positives identified.")
+            current = get_float(metrics, 'Current Price')
+            low = get_float(metrics, '52W Low')
+            high = get_float(metrics, '52W High')
+            if current != 'N/A' and low != 'N/A' and high != 'N/A':
+                st.metric("Current Price", f"${current:.2f}")
+                range_ = high - low
+                if range_ > 0:
+                    pos = (current - low) / range_
+                    left_dashes = int(pos * 20)
+                    right_dashes = 20 - left_dashes
+                    bar = f"[52W Low: ${low:.2f}] {'─' * left_dashes}|{'─' * right_dashes} [52W High: ${high:.2f}]"
+                    st.markdown(f"<div style='font-family: monospace;'>{bar}</div>", unsafe_allow_html=True)
+            if history:
+                df_hist = pd.DataFrame(history)
+                df_hist['date'] = pd.to_datetime(df_hist['date'])
+                df_hist.set_index('date', inplace=True)
+                min_close = df_hist['close'].min()
+                max_close = df_hist['close'].max()
+                st.line_chart(df_hist['close'])
+                st.write(f"Min Close: ${min_close:.2f} | Max Close: ${max_close:.2f}")
+
+                # Rankings by Preset
+                st.subheader("Rankings by Preset")
+                now = datetime.now()
+                if 'rankings' not in st.session_state:
+                    st.session_state.rankings = {}
+                if 'rankings' not in st.session_state or ticker not in st.session_state.rankings or (now - st.session_state.rankings[ticker]['timestamp']) > timedelta(hours=12):
+                    start_time = time.time()
+                    all_metrics = load_all_metrics()
+                    rankings = {}
+                    target_cap = processed['cap_category']
+                    target_sector = metrics.get('Sector', 'N/A')
+                    cap_header = target_cap if target_cap != 'N/A' else 'Unknown'
+                    sector_header = target_sector if target_sector != 'N/A' else 'Unknown'
+                    for preset in ['Value', 'Growth', 'Momentum', 'Quality']:
+                        logic = PRESETS[preset]
+                        processed_all = [process_stock(m, weights=default_weights, selected_metrics=default_metrics, logic=logic) for m in all_metrics]
+                        # All
+                        sorted_all = sorted(processed_all, key=lambda x: x['final_score'], reverse=True)
+                        rank_all = next((i+1 for i, p in enumerate(sorted_all) if p['metrics']['Ticker'] == ticker), None)
+                        rankings[f"{preset}_All"] = f"{rank_all}/{len(sorted_all)}" if rank_all else 'N/A'
+                        # Market Cap
+                        filtered_cap = [p for p in processed_all if p['cap_category'] == target_cap]
+                        if filtered_cap:
+                            sorted_cap = sorted(filtered_cap, key=lambda x: x['final_score'], reverse=True)
+                            rank_cap = next((i+1 for i, p in enumerate(sorted_cap) if p['metrics']['Ticker'] == ticker), None)
+                            rankings[f"{preset}_{cap_header}"] = f"{rank_cap}/{len(sorted_cap)}" if rank_cap else 'N/A'
+                        else:
+                            rankings[f"{preset}_Market Cap"] = 'N/A'
+                        # Sector
+                        filtered_sector = [p for p in processed_all if p['metrics'].get('Sector', 'N/A') == target_sector]
+                        if filtered_sector:
+                            sorted_sector = sorted(filtered_sector, key=lambda x: x['final_score'], reverse=True)
+                            rank_sector = next((i+1 for i, p in enumerate(sorted_sector) if p['metrics']['Ticker'] == ticker), None)
+                            rankings[f"{preset}_{sector_header}"] = f"{rank_sector}/{len(filtered_sector)}" if rank_sector else 'N/A'
+                        else:
+                            rankings[f"{preset}_Sector"] = 'N/A'
+                    st.session_state.rankings[ticker] = {'data': rankings, 'timestamp': now}
+                    compute_time = time.time() - start_time
+                    logging.info(f"Computed rankings for {ticker} in {compute_time:.2f}s")
+                else:
+                    rankings = st.session_state.rankings[ticker]['data']
+
+                # Create 4x3 grid
+                data = {
+                    'All': [rankings[f"{p}_All"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
+                    cap_header: [rankings[f"{p}_{cap_header}"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
+                    sector_header: [rankings[f"{p}_{sector_header}"] for p in ['Value', 'Growth', 'Momentum', 'Quality']]
+                }
+                df_rank = pd.DataFrame(data, index=['Value', 'Growth', 'Momentum', 'Quality'])
+                st.table(df_rank)
 
 db_empty = len(get_all_tickers()) == 0
 if db_empty:
@@ -223,12 +349,17 @@ search_query = st.text_input("Search Ticker Summary", key='summary_search_query'
 if search_query:
     all_tickers = get_all_tickers()
     filtered_tickers = [t for t in all_tickers if search_query.lower() in t.lower()]
-    selected_ticker = st.selectbox("Select Ticker", options=filtered_tickers, index=None if not st.session_state.get('selected_ticker') else (filtered_tickers.index(st.session_state.selected_ticker) if st.session_state.get('selected_ticker') in filtered_tickers else None))
+    index = filtered_tickers.index(st.session_state.get('selected_ticker')) if st.session_state.get('selected_ticker') in filtered_tickers else (0 if filtered_tickers else None)
+    selected_ticker = st.selectbox("Select Ticker", options=filtered_tickers, index=index, key='summary_selected_ticker')
     if selected_ticker:
-        st.session_state.selected_ticker = selected_ticker
+        if st.button("View Summary"):
+            st.session_state.selected_ticker = selected_ticker
+            st.session_state.summary_search_query = selected_ticker
+            logging.info(f"Viewing summary for {selected_ticker}")
+            display_ticker_summary(selected_ticker)
 else:
-    if 'selected_ticker' in st.session_state:
-        del st.session_state.selected_ticker
+    if 'summary_search_query' in st.session_state:
+        del st.session_state.summary_search_query
 
 if 'selected_ticker' in st.session_state:
     ticker = st.session_state.selected_ticker

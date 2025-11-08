@@ -4,7 +4,7 @@ from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics,
 import logging
 logging.basicConfig(level=logging.INFO)
 logging.info("Successfully imported get_all_latest_metrics")
-from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS, CONDITIONS
+from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS, CONDITIONS, format_large
 import pandas as pd
 import numpy as np  # For np.nan
 import io  # For CSV export
@@ -421,15 +421,6 @@ top_results = results if show_all else results[:num_top]
 # Disclaimer for search
 if search and not top_results:
     st.info("No matches found. Note: Results are ranked by score; low-scoring stocks may not appear unless 'Show All' is checked.")
-
-# Helper to format large numbers as B/M (returns str)
-def format_large(val):
-    if val >= 1e9:
-        return f"{round(val / 1e9, 2)}B"
-    elif val >= 1e6:
-        return f"{round(val / 1e6, 2)}M"
-    else:
-        return f"{round(val, 2)}"
 
 # Display ranked table using pandas (added new columns, combined 52W for space)
 if top_results:

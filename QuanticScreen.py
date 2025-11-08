@@ -219,10 +219,15 @@ st.info("Loading large datasets may take time; consider filtering for faster res
 
 with st.sidebar:
     st.sidebar.title("QuanticScreen")
-    dataset = st.selectbox("Select Dataset", ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys()), value=st.session_state.get('dataset', "All"), key='dataset')
+    options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())
+    default_dataset = st.session_state.get('dataset', "All")
+    index_dataset = options.index(default_dataset) if default_dataset in options else 0
+    dataset = st.selectbox("Select Dataset", options, index=index_dataset, key='dataset')
     if dataset == "Sector":
         sectors = get_unique_sectors()
-        selected_sector = st.selectbox("Select Sector", sectors, value=st.session_state.get('selected_sector'), key='selected_sector')
+        default_sector = st.session_state.get('selected_sector')
+        index_sector = sectors.index(default_sector) if default_sector and default_sector in sectors else 0
+        selected_sector = st.selectbox("Select Sector", sectors, index=index_sector, key='selected_sector')
 
     # Initialize configs in session state
     if 'configs' not in st.session_state:
@@ -231,7 +236,9 @@ with st.sidebar:
     preset_options = ["Overall", "Value", "Growth", "Momentum", "Quality"]
     custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
     config_options = preset_options + custom_configs
-    config_name = st.selectbox("Select Config", config_options, value=st.session_state.get('config_name', "Overall"), key='config_name')
+    default_config = st.session_state.get('config_name', "Overall")
+    index_config = config_options.index(default_config) if default_config in config_options else 0
+    config_name = st.selectbox("Select Config", config_options, index=index_config, key='config_name')
     num_top = st.slider("Top N Stocks", 1, 200, value=st.session_state.get('num_top', 100), key='num_top')
     show_all = st.checkbox("Show All (Ignore Top N)", value=st.session_state.get('show_all', False), key='show_all')
     exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)", value=st.session_state.get('exclude_negative', False), key='exclude_negative')

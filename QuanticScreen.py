@@ -234,7 +234,9 @@ if search_ticker:
                     logging.info(f"Fetched and saved metrics for {ticker}")
                 time.sleep(random.randint(5, 10))
         if metrics:
-            processed = process_stock(metrics, weights, selected_metrics, logic)
+            if 'weights' not in st.session_state or 'selected_metrics' not in st.session_state or 'logic' not in st.session_state:
+                logging.info("Using fallback config for summary processing")
+            processed = process_stock(metrics, st.session_state.get('weights', default_weights), st.session_state.get('selected_metrics', default_metrics), st.session_state.get('logic', DEFAULT_LOGIC))
             history = get_price_history(ticker)
             if not history:
                 with st.spinner("Fetching price history..."):
@@ -358,6 +360,11 @@ else:
 weights = config['weights']
 selected_metrics = config['metrics']
 logic = config['logic']
+
+# Store config in session_state for summary access
+st.session_state.weights = weights
+st.session_state.selected_metrics = selected_metrics
+st.session_state.logic = logic
 
 results = []
 with st.spinner('Processing stocks...'):

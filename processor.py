@@ -13,6 +13,29 @@ def format_large(val):
     else:
         return f"{round(val, 2)}"
 
+def get_cap_category(market_cap):
+    """
+    Return cap category string based on market cap.
+    """
+    if market_cap == 'N/A':
+        return 'Unknown'
+    try:
+        cap = float(market_cap)
+        if cap > 200e9:
+            return 'Mega Cap'
+        elif cap >= 10e9:
+            return 'Large Cap'
+        elif cap >= 2e9:
+            return 'Mid Cap'
+        elif cap >= 300e6:
+            return 'Small Cap'
+        elif cap >= 50e6:
+            return 'Micro Cap'
+        else:
+            return 'Nano Cap'
+    except (ValueError, TypeError):
+        return 'Unknown'
+
 CONDITIONS = {
     'Undervalued': lambda m: get_float(m, 'P/E') < 15 and get_float(m, 'ROE') > 15,
     'Strong Balance Sheet': lambda m: get_float(m, 'D/E') < 1 and get_float(m, 'Total Cash') > get_float(m, 'Total Debt'),
@@ -174,7 +197,8 @@ def process_stock(metrics, weights=None, selected_metrics=None, logic=DEFAULT_LO
         'positives': positives,
         'risks': risks,
         'factor_boosts': factor_boosts,  # For sub-rankings
-        'metrics': metrics  # Original for details
+        'metrics': metrics,  # Original for details
+        'cap_category': get_cap_category(metrics.get('Market Cap', 'N/A'))
     }
 
 # Test

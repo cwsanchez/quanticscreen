@@ -4,7 +4,7 @@ from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics,
 import logging
 logging.basicConfig(level=logging.INFO)
 logging.info("Successfully imported get_all_latest_metrics")
-from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS, CONDITIONS, format_large
+from processor import get_float, process_stock, DEFAULT_LOGIC, PRESETS, CONDITIONS, format_large, get_cap_category
 import pandas as pd
 import numpy as np  # For np.nan
 import io  # For CSV export
@@ -247,21 +247,18 @@ if search_ticker:
                         logging.info(f"Fetched and saved history for {ticker}")
                     time.sleep(random.randint(5, 10))
             with st.expander(f"Summary for {ticker}"):
+                # List all metrics in two columns, rounded to 2 decimals where float, skip internals
+                skip_keys = {'fetch_timestamp', 'fetch_id'}
+                metric_items = [(k, v) for k, v in metrics.items() if k not in skip_keys]
                 col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Company:** {metrics['Company Name']}")
-                    st.write(f"**Sector:** {metrics['Sector']}")
-                    st.write(f"**P/E:** {metrics['P/E']}")
-                    st.write(f"**ROE:** {metrics['ROE']}%")
-                    st.write(f"**P/B:** {metrics['P/B']}")
-                with col2:
-                    st.write(f"**PEG:** {metrics['PEG']}")
-                    st.write(f"**Gross Margin:** {metrics['Gross Margin']}%")
-                    st.write(f"**Market Cap:** {format_large(get_float(metrics, 'Market Cap'))}")
-                    st.write(f"**EV:** {format_large(get_float(metrics, 'EV'))}")
-                    st.write(f"**Sentiment:** {metrics.get('Sentiment', 'N/A')}")
-                    st.write(f"**Analyst Rating:** {metrics.get('Analyst Rating', 'N/A')}")
-                    st.write(f"**Target Price:** {metrics.get('Target Price', 'N/A')}")
+                half = len(metric_items) // 2
+                for i, (key, val) in enumerate(metric_items):
+                    col = col1 if i < half else col2
+                    with col:
+                        if isinstance(val, (int, float)) and val != 'N/A':
+                            st.write(f"**{key}:** {round(val, 2)}")
+                        else:
+                            st.write(f"**{key}:** {val}")
                 st.write(f"**Flags:** {', '.join(processed['flags'])}")
                 st.write(f"**Positives:** {processed['positives']}")
                 current = get_float(metrics, 'Current Price')
@@ -283,7 +280,54 @@ if search_ticker:
                     min_close = df_hist['close'].min()
                     max_close = df_hist['close'].max()
                     st.line_chart(df_hist['close'])
-                    st.write(f"**Min Close:** ${min_close:.2f} **Max Close:** ${max_close:.2f}")
+                    st.write(f"Min Close: ${min_close:.2f} | Max Close: ${max_close:.2f}")
+
+                    # Rankings by Preset
+                    st.subheader("Rankings by Preset")
+                    now = datetime.now()
+                    if 'rankings' not in st.session_state or ticker not in st.session_state.rankings or (now - st.session_state.rankings[ticker]['timestamp']) > timedelta(hours=12):
+                        start_time = time.time()
+                        all_metrics = load_all_metrics()
+                        rankings = {}
+                        target_cap = processed['cap_category']
+                        target_sector = metrics.get('Sector', 'N/A')
+                        for preset in ['Value', 'Growth', 'Momentum', 'Quality']:
+                            logic = PRESETS[preset]
+                            processed_all = [process_stock(m, weights=default_weights, selected_metrics=default_metrics, logic=logic) for m in all_metrics]
+                            # All
+                            sorted_all = sorted(processed_all, key=lambda x: x['final_score'], reverse=True)
+                            rank_all = next((i+1 for i, p in enumerate(sorted_all) if p['metrics']['Ticker'] == ticker), None)
+                            rankings[f"{preset}_All"] = f"{rank_all}/{len(sorted_all)}" if rank_all else 'N/A'
+                            # Market Cap
+                            filtered_cap = [p for p in processed_all if p['cap_category'] == target_cap]
+                            if filtered_cap:
+                                sorted_cap = sorted(filtered_cap, key=lambda x: x['final_score'], reverse=True)
+                                rank_cap = next((i+1 for i, p in enumerate(sorted_cap) if p['metrics']['Ticker'] == ticker), None)
+                                rankings[f"{preset}_Market Cap"] = f"{rank_cap}/{len(sorted_cap)}" if rank_cap else 'N/A'
+                            else:
+                                rankings[f"{preset}_Market Cap"] = 'N/A'
+                            # Sector
+                            filtered_sector = [p for p in processed_all if p['metrics'].get('Sector', 'N/A') == target_sector]
+                            if filtered_sector:
+                                sorted_sector = sorted(filtered_sector, key=lambda x: x['final_score'], reverse=True)
+                                rank_sector = next((i+1 for i, p in enumerate(sorted_sector) if p['metrics']['Ticker'] == ticker), None)
+                                rankings[f"{preset}_Sector"] = f"{rank_sector}/{len(sorted_sector)}" if rank_sector else 'N/A'
+                            else:
+                                rankings[f"{preset}_Sector"] = 'N/A'
+                        st.session_state.rankings[ticker] = {'data': rankings, 'timestamp': now}
+                        compute_time = time.time() - start_time
+                        logging.info(f"Computed rankings for {ticker} in {compute_time:.2f}s")
+                    else:
+                        rankings = st.session_state.rankings[ticker]['data']
+
+                    # Create 4x3 grid
+                    data = {
+                        'All': [rankings[f"{p}_All"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
+                        'Market Cap': [rankings[f"{p}_Market Cap"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
+                        'Sector': [rankings[f"{p}_Sector"] for p in ['Value', 'Growth', 'Momentum', 'Quality']]
+                    }
+                    df_rank = pd.DataFrame(data, index=['Value', 'Growth', 'Momentum', 'Quality'])
+                    st.table(df_rank)
 
 with st.sidebar:
     st.sidebar.title("QuanticScreen")

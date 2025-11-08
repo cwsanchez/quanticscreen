@@ -247,51 +247,6 @@ with st.sidebar:
         else:
             st.error("Provide a name and tickers.")
 
-    # Custom Filters
-    st.subheader("Custom Filters")
-    custom_filter_name = st.text_input("Custom Filter Name", key='custom_filter_name')
-    if st.button("Save Current Filters"):
-        if custom_filter_name:
-            current_filters = {
-                'dataset': st.session_state.get('dataset'),
-                'selected_sector': st.session_state.get('selected_sector') if st.session_state.get('dataset') == "Sector" else None,
-                'config_name': st.session_state.get('config_name'),
-                'num_top': st.session_state.get('num_top'),
-                'show_all': st.session_state.get('show_all'),
-                'exclude_negative': st.session_state.get('exclude_negative'),
-                'require_flags': st.session_state.get('require_flags'),
-                'match_type': st.session_state.get('match_type'),
-                'search': st.session_state.get('search')
-            }
-            if 'custom_filters' not in st.session_state:
-                st.session_state.custom_filters = {}
-            st.session_state.custom_filters[custom_filter_name] = current_filters
-            st.success(f"Saved filter '{custom_filter_name}'")
-            logging.info(f"Saved custom filter: {custom_filter_name}")
-    load_filter = st.selectbox("Load Custom Filter", [""] + list(st.session_state.get('custom_filters', {}).keys()), key='load_filter')
-    if load_filter and load_filter != "":
-        loaded = st.session_state.custom_filters[load_filter]
-        logging.info(f"Attempting to load filter '{load_filter}': loaded dataset='{loaded['dataset']}', current session dataset='{st.session_state.get('dataset')}'")
-        options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())
-        if loaded['dataset'] not in options:
-            logging.error(f"Loaded dataset '{loaded['dataset']}' not in available options: {options}")
-            st.error(f"Invalid dataset in filter '{load_filter}': {loaded['dataset']}")
-        else:
-            logging.info("Setting session state for loaded filter")
-            st.session_state.dataset = loaded['dataset']
-            if loaded['selected_sector']:
-                st.session_state.selected_sector = loaded['selected_sector']
-            st.session_state.config_name = loaded['config_name']
-            st.session_state.num_top = loaded['num_top']
-            st.session_state.show_all = loaded['show_all']
-            st.session_state.exclude_negative = loaded['exclude_negative']
-            st.session_state.require_flags = loaded['require_flags']
-            st.session_state.match_type = loaded['match_type']
-            st.session_state.search = loaded['search']
-            st.session_state.load_filter = ""
-            st.success(f"Loaded filter '{load_filter}'")
-            logging.info(f"Loaded custom filter: {load_filter}")
-            st.rerun()
 
     options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())
     default_dataset = st.session_state.get('dataset', "All")

@@ -285,6 +285,8 @@ if search_ticker:
                     # Rankings by Preset
                     st.subheader("Rankings by Preset")
                     now = datetime.now()
+                    if 'rankings' not in st.session_state:
+                        st.session_state.rankings = {}
                     if 'rankings' not in st.session_state or ticker not in st.session_state.rankings or (now - st.session_state.rankings[ticker]['timestamp']) > timedelta(hours=12):
                         start_time = time.time()
                         all_metrics = load_all_metrics()

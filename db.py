@@ -113,6 +113,13 @@ class ProcessedResult(Base):
 
     metric_fetch = relationship("MetricFetch")
 
+class PriceHistory(Base):
+    __tablename__ = 'PriceHistory'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String, ForeignKey('Stocks.ticker'))
+    fetch_timestamp = Column(String)
+    history_json = Column(Text)
+
 def init_db():
     """
     Initializes the database by creating tables if they don't exist.
@@ -231,7 +238,7 @@ def init_db():
         print(f"Migration error adding forward_pe: {e}")
 
     # Conditional table creation
-    tables = [Stock, MetricFetch, Metadata, ProcessedResult]
+    tables = [Stock, MetricFetch, Metadata, ProcessedResult, PriceHistory]
     for table in tables:
         if not (inspector.has_table(table.__tablename__.lower()) or inspector.has_table(table.__tablename__)):
             try:
@@ -498,6 +505,31 @@ def get_stale_tickers():
     stale = session.query(MetricFetch.ticker).filter(cast(MetricFetch.fetch_timestamp, DateTime) < cutoff).order_by(MetricFetch.fetch_timestamp).all()
     session.close()
     return [t[0] for t in stale]
+def get_price_history(ticker):
+    """
+    Retrieves the latest price history for a ticker if fetched <24 hours ago.
+    Returns list of {'date':str, 'close':float} or None if no recent data.
+    """
+    session = Session()
+    latest = session.query(PriceHistory).filter_by(ticker=ticker).order_by(desc(PriceHistory.fetch_timestamp)).first()
+    session.close()
+    if latest:
+        fetch_time = datetime.fromisoformat(latest.fetch_timestamp)
+        if datetime.now() - fetch_time < timedelta(hours=24):
+            return json.loads(latest.history_json)
+    return None
+
+def save_price_history(ticker, history_list):
+    """
+    Saves price history to DB with current timestamp.
+    """
+    session = Session()
+    now = datetime.now().isoformat()
+    ph = PriceHistory(ticker=ticker, fetch_timestamp=now, history_json=json.dumps(history_list))
+    session.add(ph)
+    session.commit()
+    session.close()
+
 def get_all_latest_metrics():
     session = Session()
     if session.query(Stock).count() == 0:

@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, get_all_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers, prune_old_metrics
+from db import init_db, get_all_tickers, get_unique_sectors, get_latest_metrics, get_all_latest_metrics, save_metrics, get_metadata, set_metadata, get_stale_tickers, prune_old_metrics, get_price_history, save_price_history
 import logging
 logging.basicConfig(level=logging.INFO)
 logging.info("Successfully imported get_all_latest_metrics")
@@ -216,6 +216,69 @@ if not st.session_state.get('bg_thread_started', False):
 st.title("QuanticScreen")
 
 st.info("Loading large datasets may take time; consider filtering for faster results.")
+
+# Search Ticker for Summary
+search_ticker = st.text_input("Search Ticker", value="", key='search_ticker')
+
+if search_ticker:
+    ticker = search_ticker.upper().strip()
+    if ticker:
+        metrics = get_latest_metrics(ticker)
+        if not metrics or datetime.now() - datetime.fromisoformat(metrics['fetch_timestamp']) > timedelta(hours=24):
+            with st.spinner("Fetching data..."):
+                fetcher = StockFetcher()
+                new_metrics = fetcher.fetch_metrics(ticker)
+                if new_metrics:
+                    save_metrics(new_metrics)
+                    metrics = get_latest_metrics(ticker)
+                    logging.info(f"Fetched and saved metrics for {ticker}")
+                time.sleep(random.randint(5, 10))
+        if metrics:
+            processed = process_stock(metrics, weights, selected_metrics, logic)
+            history = get_price_history(ticker)
+            if not history:
+                with st.spinner("Fetching price history..."):
+                    fetcher = StockFetcher()
+                    history = fetcher.fetch_history(ticker)
+                    if history:
+                        save_price_history(ticker, history)
+                        logging.info(f"Fetched and saved history for {ticker}")
+                    time.sleep(random.randint(5, 10))
+            with st.expander(f"Summary for {ticker}"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Company:** {metrics['Company Name']}")
+                    st.write(f"**Sector:** {metrics['Sector']}")
+                    st.write(f"**P/E:** {metrics['P/E']}")
+                    st.write(f"**ROE:** {metrics['ROE']}%")
+                    st.write(f"**P/B:** {metrics['P/B']}")
+                with col2:
+                    st.write(f"**PEG:** {metrics['PEG']}")
+                    st.write(f"**Gross Margin:** {metrics['Gross Margin']}%")
+                    st.write(f"**Market Cap:** {format_large(get_float(metrics, 'Market Cap'))}")
+                    st.write(f"**EV:** {format_large(get_float(metrics, 'EV'))}")
+                st.write(f"**Flags:** {', '.join(processed['flags'])}")
+                st.write(f"**Positives:** {processed['positives']}")
+                current = get_float(metrics, 'Current Price')
+                low = get_float(metrics, '52W Low')
+                high = get_float(metrics, '52W High')
+                if current != 'N/A' and low != 'N/A' and high != 'N/A':
+                    st.metric("Current Price", f"${current:.2f}")
+                    range_ = high - low
+                    if range_ > 0:
+                        pos = (current - low) / range_
+                        left_dashes = int(pos * 20)
+                        right_dashes = 20 - left_dashes
+                        bar = f"[52W Low: ${low:.2f}] {'─' * left_dashes}|{'─' * right_dashes} [52W High: ${high:.2f}]"
+                        st.markdown(f"<div style='font-family: monospace;'>{bar}</div>", unsafe_allow_html=True)
+                if history:
+                    df_hist = pd.DataFrame(history)
+                    df_hist['date'] = pd.to_datetime(df_hist['date'])
+                    df_hist.set_index('date', inplace=True)
+                    min_close = df_hist['close'].min()
+                    max_close = df_hist['close'].max()
+                    st.line_chart(df_hist['close'])
+                    st.write(f"**Min Close:** ${min_close:.2f} **Max Close:** ${max_close:.2f}")
 
 with st.sidebar:
     st.sidebar.title("QuanticScreen")

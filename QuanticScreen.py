@@ -219,33 +219,6 @@ st.info("Loading large datasets may take time; consider filtering for faster res
 
 with st.sidebar:
     st.sidebar.title("QuanticScreen")
-    options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())
-    default_dataset = st.session_state.get('dataset', "All")
-    index_dataset = options.index(default_dataset) if default_dataset in options else 0
-    dataset = st.selectbox("Select Dataset", options, index=index_dataset, key='dataset')
-    if dataset == "Sector":
-        sectors = get_unique_sectors()
-        default_sector = st.session_state.get('selected_sector')
-        index_sector = sectors.index(default_sector) if default_sector and default_sector in sectors else 0
-        selected_sector = st.selectbox("Select Sector", sectors, index=index_sector, key='selected_sector')
-
-    # Initialize configs in session state
-    if 'configs' not in st.session_state:
-        st.session_state.configs = {}
-
-    preset_options = ["Overall", "Value", "Growth", "Momentum", "Quality"]
-    custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
-    config_options = preset_options + custom_configs
-    default_config = st.session_state.get('config_name', "Overall")
-    index_config = config_options.index(default_config) if default_config in config_options else 0
-    config_name = st.selectbox("Select Config", config_options, index=index_config, key='config_name')
-    num_top = st.slider("Top N Stocks", 1, 200, value=st.session_state.get('num_top', 100), key='num_top')
-    show_all = st.checkbox("Show All (Ignore Top N)", value=st.session_state.get('show_all', False), key='show_all')
-    exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)", value=st.session_state.get('exclude_negative', False), key='exclude_negative')
-
-    # Flag filtering
-    require_flags = st.multiselect("Require Flags", list(CONDITIONS.keys()), default=st.session_state.get('require_flags', []), key='require_flags')
-    match_type = st.radio("Match", ["Any", "All"], index=0 if st.session_state.get('match_type', "Any") == "Any" else 1, key='match_type')
 
     # Custom Sets
     st.subheader("Create Custom Set")
@@ -298,19 +271,55 @@ with st.sidebar:
     load_filter = st.selectbox("Load Custom Filter", [""] + list(st.session_state.get('custom_filters', {}).keys()), key='load_filter')
     if load_filter and load_filter != "":
         loaded = st.session_state.custom_filters[load_filter]
-        st.session_state.dataset = loaded['dataset']
-        if loaded['selected_sector']:
-            st.session_state.selected_sector = loaded['selected_sector']
-        st.session_state.config_name = loaded['config_name']
-        st.session_state.num_top = loaded['num_top']
-        st.session_state.show_all = loaded['show_all']
-        st.session_state.exclude_negative = loaded['exclude_negative']
-        st.session_state.require_flags = loaded['require_flags']
-        st.session_state.match_type = loaded['match_type']
-        st.session_state.search = loaded['search']
-        st.success(f"Loaded filter '{load_filter}'")
-        logging.info(f"Loaded custom filter: {load_filter}")
-        st.rerun()
+        logging.info(f"Attempting to load filter '{load_filter}': loaded dataset='{loaded['dataset']}', current session dataset='{st.session_state.get('dataset')}'")
+        options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())
+        if loaded['dataset'] not in options:
+            logging.error(f"Loaded dataset '{loaded['dataset']}' not in available options: {options}")
+            st.error(f"Invalid dataset in filter '{load_filter}': {loaded['dataset']}")
+        else:
+            logging.info("Setting session state for loaded filter")
+            st.session_state.dataset = loaded['dataset']
+            if loaded['selected_sector']:
+                st.session_state.selected_sector = loaded['selected_sector']
+            st.session_state.config_name = loaded['config_name']
+            st.session_state.num_top = loaded['num_top']
+            st.session_state.show_all = loaded['show_all']
+            st.session_state.exclude_negative = loaded['exclude_negative']
+            st.session_state.require_flags = loaded['require_flags']
+            st.session_state.match_type = loaded['match_type']
+            st.session_state.search = loaded['search']
+            st.session_state.load_filter = ""
+            st.success(f"Loaded filter '{load_filter}'")
+            logging.info(f"Loaded custom filter: {load_filter}")
+            st.rerun()
+
+    options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())
+    default_dataset = st.session_state.get('dataset', "All")
+    index_dataset = options.index(default_dataset) if default_dataset in options else 0
+    dataset = st.selectbox("Select Dataset", options, index=index_dataset, key='dataset')
+    if dataset == "Sector":
+        sectors = get_unique_sectors()
+        default_sector = st.session_state.get('selected_sector')
+        index_sector = sectors.index(default_sector) if default_sector and default_sector in sectors else 0
+        selected_sector = st.selectbox("Select Sector", sectors, index=index_sector, key='selected_sector')
+
+    # Initialize configs in session state
+    if 'configs' not in st.session_state:
+        st.session_state.configs = {}
+
+    preset_options = ["Overall", "Value", "Growth", "Momentum", "Quality"]
+    custom_configs = [k for k in st.session_state.configs.keys() if k not in preset_options]
+    config_options = preset_options + custom_configs
+    default_config = st.session_state.get('config_name', "Overall")
+    index_config = config_options.index(default_config) if default_config in config_options else 0
+    config_name = st.selectbox("Select Config", config_options, index=index_config, key='config_name')
+    num_top = st.slider("Top N Stocks", 1, 200, value=st.session_state.get('num_top', 100), key='num_top')
+    show_all = st.checkbox("Show All (Ignore Top N)", value=st.session_state.get('show_all', False), key='show_all')
+    exclude_negative = st.checkbox("Exclude Negative Flags (e.g., Value Trap, Debt Burden)", value=st.session_state.get('exclude_negative', False), key='exclude_negative')
+
+    # Flag filtering
+    require_flags = st.multiselect("Require Flags", list(CONDITIONS.keys()), default=st.session_state.get('require_flags', []), key='require_flags')
+    match_type = st.radio("Match", ["Any", "All"], index=0 if st.session_state.get('match_type', "Any") == "Any" else 1, key='match_type')
 
 # Get metrics and process on the fly
 if db_empty:

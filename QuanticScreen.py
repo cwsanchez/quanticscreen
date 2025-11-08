@@ -289,31 +289,20 @@ with st.sidebar:
     st.sidebar.title("QuanticScreen")
 
     # Custom Sets
-    st.subheader("Create Custom Set")
-    set_name = st.text_input("Set Name", key='set_name')
-    ticker_input = st.text_area("Comma-separated Tickers (e.g., AAPL,MSFT)", key='ticker_input')
-    if st.button("Create Set"):
-        if set_name and ticker_input:
-            input_tickers = [t.strip().upper() for t in ticker_input.split(',')]
-            if len(input_tickers) > 50:
-                input_tickers = input_tickers[:50]
-                st.warning("Input capped to 50 tickers.")
-            valid_tickers = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t) and get_latest_metrics(t)]
-            unseeded = [t for t in input_tickers if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?(-[A-Z])?$', t) and not get_latest_metrics(t)]
-            if valid_tickers:
+    with st.form("create_custom_set"):
+        st.subheader("Create Custom Set")
+        set_name = st.text_input("New Custom Set Name", key='new_set_name')
+        available_tickers = get_all_tickers()
+        selected_tickers = st.multiselect("Select Tickers", available_tickers, key='selected_tickers')
+        submitted = st.form_submit_button("Save")
+        if submitted:
+            if set_name and selected_tickers:
                 if 'custom_sets' not in st.session_state:
                     st.session_state.custom_sets = {}
-                st.session_state.custom_sets[set_name] = valid_tickers
-                st.success(f"Created set '{set_name}' with {len(valid_tickers)} valid tickers.")
-                st.rerun()
-                if unseeded:
-                    for t in unseeded:
-                        st.warning(f"Ticker {t} not found in database and will be skipped. Use the Manage page to add new tickers.")
-
+                st.session_state.custom_sets[set_name] = selected_tickers
+                st.success(f"Created set '{set_name}' with {len(selected_tickers)} tickers.")
             else:
-                st.error("No valid tickers provided. Tickers should be 1-5 uppercase letters, optionally with '.' or '-'.")
-        else:
-            st.error("Provide a name and tickers.")
+                st.error("Provide a name and select tickers.")
 
 
     options = ["All", "Large Cap", "Mid Cap", "Small Cap", "Value", "Growth", "Sector"] + list(st.session_state.get('custom_sets', {}).keys())

@@ -266,7 +266,17 @@ if search_ticker:
                             display_val = val
                         st.write(f"**{key}:** {display_val}")
                 st.write(f"**Flags:** {', '.join(processed['flags'])}")
-                st.write(f"**Positives:** {'; '.join(processed['positives'])}")
+                st.subheader("Positives")
+                positives = processed['positives']
+                if isinstance(positives, str):
+                    positives_list = positives.split('; ')
+                else:
+                    positives_list = positives
+                if positives_list:
+                    for positive in positives_list:
+                        st.markdown(f"- {positive.strip()}")
+                else:
+                    st.write("No positives identified.")
                 current = get_float(metrics, 'Current Price')
                 low = get_float(metrics, '52W Low')
                 high = get_float(metrics, '52W High')

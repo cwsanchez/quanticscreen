@@ -293,6 +293,8 @@ if search_ticker:
                         rankings = {}
                         target_cap = processed['cap_category']
                         target_sector = metrics.get('Sector', 'N/A')
+                        cap_header = target_cap if target_cap != 'N/A' else 'Unknown'
+                        sector_header = target_sector if target_sector != 'N/A' else 'Unknown'
                         for preset in ['Value', 'Growth', 'Momentum', 'Quality']:
                             logic = PRESETS[preset]
                             processed_all = [process_stock(m, weights=default_weights, selected_metrics=default_metrics, logic=logic) for m in all_metrics]
@@ -305,7 +307,7 @@ if search_ticker:
                             if filtered_cap:
                                 sorted_cap = sorted(filtered_cap, key=lambda x: x['final_score'], reverse=True)
                                 rank_cap = next((i+1 for i, p in enumerate(sorted_cap) if p['metrics']['Ticker'] == ticker), None)
-                                rankings[f"{preset}_Market Cap"] = f"{rank_cap}/{len(sorted_cap)}" if rank_cap else 'N/A'
+                                rankings[f"{preset}_{cap_header}"] = f"{rank_cap}/{len(sorted_cap)}" if rank_cap else 'N/A'
                             else:
                                 rankings[f"{preset}_Market Cap"] = 'N/A'
                             # Sector
@@ -313,7 +315,7 @@ if search_ticker:
                             if filtered_sector:
                                 sorted_sector = sorted(filtered_sector, key=lambda x: x['final_score'], reverse=True)
                                 rank_sector = next((i+1 for i, p in enumerate(sorted_sector) if p['metrics']['Ticker'] == ticker), None)
-                                rankings[f"{preset}_Sector"] = f"{rank_sector}/{len(sorted_sector)}" if rank_sector else 'N/A'
+                                rankings[f"{preset}_{sector_header}"] = f"{rank_sector}/{len(sorted_sector)}" if rank_sector else 'N/A'
                             else:
                                 rankings[f"{preset}_Sector"] = 'N/A'
                         st.session_state.rankings[ticker] = {'data': rankings, 'timestamp': now}
@@ -325,8 +327,8 @@ if search_ticker:
                     # Create 4x3 grid
                     data = {
                         'All': [rankings[f"{p}_All"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
-                        'Market Cap': [rankings[f"{p}_Market Cap"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
-                        'Sector': [rankings[f"{p}_Sector"] for p in ['Value', 'Growth', 'Momentum', 'Quality']]
+                        cap_header: [rankings[f"{p}_{cap_header}"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
+                        sector_header: [rankings[f"{p}_{sector_header}"] for p in ['Value', 'Growth', 'Momentum', 'Quality']]
                     }
                     df_rank = pd.DataFrame(data, index=['Value', 'Growth', 'Momentum', 'Quality'])
                     st.table(df_rank)

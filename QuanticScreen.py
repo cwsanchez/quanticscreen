@@ -272,6 +272,11 @@ def load_all_metrics():
     return get_all_latest_metrics()
 
 # Auto-fetch logic with polling
+def get_last_close_date(now=datetime.now(pytz.timezone('US/Eastern'))):
+    while now.weekday() > 4 or now.hour < 16:
+        now -= timedelta(days=1)
+    return now.date() if now.weekday() <= 4 else (now - timedelta(days=now.weekday()-4)).date()
+
 def fetch_bg():
     if st.session_state.get('bg_thread_started', False):
         logging.info("Background thread already started - skipping duplicate.")
@@ -279,43 +284,48 @@ def fetch_bg():
     logging.info("Starting background refresh...")
     et_tz = pytz.timezone('US/Eastern')
     now_et = datetime.now(et_tz)
-    is_weekday = now_et.weekday() < 5
-    market_open = dt_time(9, 30)
-    current_time = now_et.time()
-    market_open_dt = datetime.combine(now_et.date(), market_open).replace(tzinfo=et_tz)
-    market_update_end = market_open_dt + timedelta(hours=6.5)  # 9:30 AM to 4:00 PM ET
-
-    if not (is_weekday and current_time >= market_open and current_time <= market_update_end.time()):
-        logging.info("Skipping: not market hours/weekday.")
-        # Schedule next poll in 15 mins
-        threading.Timer(15 * 60, fetch_bg).start()
-        return
+    market_open_dt = datetime.combine(now_et.date(), dt_time(0,0)).replace(tzinfo=et_tz)
 
     last_fetch_str = get_metadata('last_fetch_time')
     last_fetch = datetime.fromisoformat(last_fetch_str).replace(tzinfo=et_tz) if last_fetch_str else None
     if last_fetch is None or last_fetch < market_open_dt:
         stale_tickers = get_stale_tickers()
-        if not stale_tickers:
-            logging.info("No stale tickers found.")
+        last_close_date = get_last_close_date(now_et)
+        to_fetch = []
+        for t in stale_tickers:
+            metrics = get_latest_metrics(t)
+            if metrics is None:
+                to_fetch.append((t, 'initial'))
+            else:
+                fetch_date = datetime.fromisoformat(metrics['fetch_timestamp']).date()
+                if fetch_date < last_close_date:
+                    to_fetch.append((t, 'refresh'))
+                else:
+                    logging.info(f"Skipping {t}: fetch_timestamp {fetch_date} >= last_close_date {last_close_date}")
+        if not to_fetch:
+            logging.info("No tickers to fetch.")
             # Schedule next poll in 15 mins
             threading.Timer(15 * 60, fetch_bg).start()
             return
         fetcher = StockFetcher()
         chunk_size = 30  # Process in chunks of 30
         batch_size = random.randint(3, 5)
-        total_stale = len(stale_tickers)
-        logging.info(f"Processing {total_stale} stale tickers in chunks of {chunk_size}.")
-        for i in range(0, total_stale, chunk_size):
-            chunk = stale_tickers[i:i + chunk_size]
+        total_to_fetch = len(to_fetch)
+        logging.info(f"Processing {total_to_fetch} tickers to fetch in chunks of {chunk_size}.")
+        for i in range(0, total_to_fetch, chunk_size):
+            chunk = to_fetch[i:i + chunk_size]
             processed_tickers = []
             for j in range(0, len(chunk), batch_size):
                 batch = chunk[j:j + batch_size]
-                for t in batch:
+                for t, fetch_type in batch:
                     try:
                         metrics = fetcher.fetch_metrics(t)
                         if metrics:
                             save_metrics(metrics)
-                            logging.info(f"Fetched and updated {t}.")
+                            if fetch_type == 'initial':
+                                logging.info(f"Fetched initial metrics for {t}.")
+                            else:
+                                logging.info(f"Fetched and updated {t}.")
                             processed_tickers.append(t)
                     except Exception as e:
                         logging.error(f"Error fetching {t}: {e}")
@@ -326,7 +336,7 @@ def fetch_bg():
                 prune_old_metrics(tickers=processed_tickers)
                 logging.info(f"Pruned old metrics for chunk of {len(processed_tickers)} tickers.")
             # If more chunks and total >50, sleep before next chunk
-            if i + chunk_size < total_stale and total_stale > 50:
+            if i + chunk_size < total_to_fetch and total_to_fetch > 50:
                 sleep_time = random.randint(15 * 60, 30 * 60)
                 logging.info(f"More chunks remaining, sleeping {sleep_time}s before next chunk.")
                 time.sleep(sleep_time)

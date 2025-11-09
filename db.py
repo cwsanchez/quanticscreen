@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_, cast, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_, or_, cast, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.dialects.sqlite import insert
@@ -107,7 +107,7 @@ class Metadata(Base):
 class ProcessedResult(Base):
     __tablename__ = 'ProcessedResults'
     result_id = Column(Integer, primary_key=True, autoincrement=True)
-    fetch_id = Column(Integer, ForeignKey('MetricFetches.fetch_id'))
+    fetch_id = Column(Integer, ForeignKey('MetricFetches.fetch_id', ondelete='CASCADE'))
     base_score = Column(Float)
     final_score = Column(Float)
     flags = Column(Text)  # JSON string
@@ -420,6 +420,9 @@ def get_latest_metrics(ticker):
         }
         return metrics
     return None
+def is_latest(mf, session):
+    return mf.fetch_id == session.query(func.max(MetricFetch.fetch_id)).filter(MetricFetch.ticker == mf.ticker).scalar()
+
 
 def prune_old_metrics(tickers=None, keep_days=7):
     """
@@ -430,35 +433,15 @@ def prune_old_metrics(tickers=None, keep_days=7):
     """
     session = Session()
     try:
-        cutoff = datetime.now() - timedelta(days=keep_days)
-        # Get latest fetch_id per ticker to keep
-        if tickers:
-            latest_subq = session.query(
-                MetricFetch.ticker,
-                func.max(MetricFetch.fetch_timestamp).label('max_ts')
-            ).filter(MetricFetch.ticker.in_(tickers)).group_by(MetricFetch.ticker).subquery()
-        else:
-            latest_subq = session.query(
-                MetricFetch.ticker,
-                func.max(MetricFetch.fetch_timestamp).label('max_ts')
-            ).group_by(MetricFetch.ticker).subquery()
-        latest_ids = session.query(MetricFetch.fetch_id).join(
-            latest_subq,
-            and_(MetricFetch.ticker == latest_subq.c.ticker, MetricFetch.fetch_timestamp == latest_subq.c.max_ts)
-        ).all()
-        keep_ids = [row[0] for row in latest_ids]
-        # Delete ProcessedResults where fetch_id not in keep_ids and fetch_timestamp < cutoff
-        deleted_processed = session.query(ProcessedResult).join(MetricFetch, ProcessedResult.fetch_id == MetricFetch.fetch_id).filter(
-            ProcessedResult.fetch_id.notin_(keep_ids),
-            cast(MetricFetch.fetch_timestamp, DateTime) < cutoff
-        ).delete(synchronize_session=False)
-        # Delete MetricFetches not in keep_ids and fetch_timestamp < cutoff
-        deleted_fetches = session.query(MetricFetch).filter(
-            MetricFetch.fetch_id.notin_(keep_ids),
-            cast(MetricFetch.fetch_timestamp, DateTime) < cutoff
-        ).delete(synchronize_session=False)
+        now = datetime.now()
+        query = session.query(MetricFetch).filter(
+            MetricFetch.ticker.in_(tickers) if tickers else True,
+            cast(MetricFetch.fetch_timestamp, DateTime) < now - timedelta(days=keep_days)
+        )
+        ids_to_delete = [mf.fetch_id for mf in query.all() if not is_latest(mf, session)]
+        deleted_count = session.query(MetricFetch).filter(MetricFetch.fetch_id.in_(ids_to_delete)).delete(synchronize_session=False)
         session.commit()
-        logging.info(f"Pruned {deleted_fetches} MetricFetches and {deleted_processed} ProcessedResults older than {keep_days} days.")
+        logging.info(f"Pruned {deleted_count} MetricFetches (and cascaded ProcessedResults) older than {keep_days} days.")
     except Exception as e:
         session.rollback()
         logging.error(f"Error pruning old metrics: {e}")
@@ -553,14 +536,22 @@ def get_unique_sectors():
 
 def get_stale_tickers():
     """
-    Returns list of tickers with data older than 12 hours, ordered by oldest first.
+    Returns list of tickers with no metrics or data older than 12 hours, ordered by oldest first (None first).
     """
     session = Session()
     cutoff = datetime.now() - timedelta(hours=12)
-    # TODO: Migrate fetch_timestamp to DateTime column for better performance.
-    stale = session.query(MetricFetch.ticker).filter(cast(MetricFetch.fetch_timestamp, DateTime) < cutoff).order_by(MetricFetch.fetch_timestamp).all()
+    # Subquery for max fetch_timestamp per ticker
+    subq = session.query(
+        MetricFetch.ticker,
+        func.max(MetricFetch.fetch_timestamp).label('max_ts')
+    ).group_by(MetricFetch.ticker).subquery()
+    # Left join Stocks with subq
+    query = session.query(Stock.ticker).outerjoin(subq, Stock.ticker == subq.c.ticker).filter(
+        or_(subq.c.max_ts.is_(None), cast(subq.c.max_ts, DateTime) < cutoff)
+    ).order_by(subq.c.max_ts)
+    tickers = [t[0] for t in query.all()]
     session.close()
-    return [t[0] for t in stale]
+    return tickers
 def get_price_history(ticker):
     """
     Retrieves the latest price history for a ticker if fetched <24 hours ago.

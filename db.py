@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_, cast, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, desc, func, and_, or_, cast, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.dialects.sqlite import insert
@@ -536,14 +536,22 @@ def get_unique_sectors():
 
 def get_stale_tickers():
     """
-    Returns list of tickers with data older than 12 hours, ordered by oldest first.
+    Returns list of tickers with no metrics or data older than 12 hours, ordered by oldest first (None first).
     """
     session = Session()
     cutoff = datetime.now() - timedelta(hours=12)
-    # TODO: Migrate fetch_timestamp to DateTime column for better performance.
-    stale = session.query(MetricFetch.ticker).filter(cast(MetricFetch.fetch_timestamp, DateTime) < cutoff).order_by(MetricFetch.fetch_timestamp).all()
+    # Subquery for max fetch_timestamp per ticker
+    subq = session.query(
+        MetricFetch.ticker,
+        func.max(MetricFetch.fetch_timestamp).label('max_ts')
+    ).group_by(MetricFetch.ticker).subquery()
+    # Left join Stocks with subq
+    query = session.query(Stock.ticker).outerjoin(subq, Stock.ticker == subq.c.ticker).filter(
+        or_(subq.c.max_ts.is_(None), cast(subq.c.max_ts, DateTime) < cutoff)
+    ).order_by(subq.c.max_ts)
+    tickers = [t[0] for t in query.all()]
     session.close()
-    return [t[0] for t in stale]
+    return tickers
 def get_price_history(ticker):
     """
     Retrieves the latest price history for a ticker if fetched <24 hours ago.

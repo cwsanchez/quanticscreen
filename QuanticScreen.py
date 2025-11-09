@@ -213,55 +213,59 @@ def display_ticker_summary(ticker):
                 st.write(f"Min Close: ${min_close:.2f} | Max Close: ${max_close:.2f}")
 
                 # Rankings by Preset
-                st.subheader("Rankings by Preset")
-                now = datetime.now()
-                if 'rankings' not in st.session_state:
-                    st.session_state.rankings = {}
-                if 'rankings' not in st.session_state or ticker not in st.session_state.rankings or (now - st.session_state.rankings[ticker]['timestamp']) > timedelta(hours=12):
-                    start_time = time.time()
-                    all_metrics = load_all_metrics()
-                    rankings = {}
-                    target_cap = processed['cap_category']
-                    target_sector = metrics.get('Sector', 'N/A')
-                    cap_header = target_cap if target_cap != 'N/A' else 'Unknown'
-                    sector_header = target_sector if target_sector != 'N/A' else 'Unknown'
-                    for preset in ['Value', 'Growth', 'Momentum', 'Quality']:
-                        logic = PRESETS[preset]
-                        processed_all = [process_stock(m, weights=default_weights, selected_metrics=default_metrics, logic=logic) for m in all_metrics]
-                        # All
-                        sorted_all = sorted(processed_all, key=lambda x: x['final_score'], reverse=True)
-                        rank_all = next((i+1 for i, p in enumerate(sorted_all) if p['metrics']['Ticker'] == ticker), None)
-                        rankings[f"{preset}_All"] = f"{rank_all}/{len(sorted_all)}" if rank_all else 'N/A'
-                        # Market Cap
-                        filtered_cap = [p for p in processed_all if p['cap_category'] == target_cap]
-                        if filtered_cap:
-                            sorted_cap = sorted(filtered_cap, key=lambda x: x['final_score'], reverse=True)
-                            rank_cap = next((i+1 for i, p in enumerate(sorted_cap) if p['metrics']['Ticker'] == ticker), None)
-                            rankings[f"{preset}_{cap_header}"] = f"{rank_cap}/{len(sorted_cap)}" if rank_cap else 'N/A'
-                        else:
-                            rankings[f"{preset}_Market Cap"] = 'N/A'
-                        # Sector
-                        filtered_sector = [p for p in processed_all if p['metrics'].get('Sector', 'N/A') == target_sector]
-                        if filtered_sector:
-                            sorted_sector = sorted(filtered_sector, key=lambda x: x['final_score'], reverse=True)
-                            rank_sector = next((i+1 for i, p in enumerate(sorted_sector) if p['metrics']['Ticker'] == ticker), None)
-                            rankings[f"{preset}_{sector_header}"] = f"{rank_sector}/{len(filtered_sector)}" if rank_sector else 'N/A'
-                        else:
-                            rankings[f"{preset}_Sector"] = 'N/A'
-                    st.session_state.rankings[ticker] = {'data': rankings, 'timestamp': now}
-                    compute_time = time.time() - start_time
-                    logging.info(f"Computed rankings for {ticker} in {compute_time:.2f}s")
-                else:
-                    rankings = st.session_state.rankings[ticker]['data']
+                if all_metrics := get_all_latest_metrics():
+                    st.subheader("Rankings by Preset")
+                    now = datetime.now()
+                    if 'rankings' not in st.session_state:
+                        st.session_state.rankings = {}
+                    if 'rankings' not in st.session_state or ticker not in st.session_state.rankings or (now - st.session_state.rankings[ticker]['timestamp']) > timedelta(hours=12):
+                        start_time = time.time()
+                        rankings = {}
+                        target_cap = processed['cap_category']
+                        target_sector = metrics.get('Sector', 'N/A')
+                        for preset in ['Value', 'Growth', 'Momentum', 'Quality']:
+                            logic = PRESETS[preset]
+                            processed_all = [process_stock(m, weights=default_weights, selected_metrics=default_metrics, logic=logic) for m in all_metrics]
+                            # All
+                            sorted_all = sorted(processed_all, key=lambda x: x['final_score'], reverse=True)
+                            rank_all = next((i+1 for i, p in enumerate(sorted_all) if p['metrics']['Ticker'] == ticker), None)
+                            rankings[f"{preset}_All"] = f"{rank_all}/{len(sorted_all)}" if rank_all else 'N/A'
+                            # Market Cap
+                            filtered_cap = [p for p in processed_all if p['cap_category'] == target_cap]
+                            if filtered_cap:
+                                sorted_cap = sorted(filtered_cap, key=lambda x: x['final_score'], reverse=True)
+                                rank_cap = next((i+1 for i, p in enumerate(sorted_cap) if p['metrics']['Ticker'] == ticker), None)
+                                rankings[f"{preset}_{cap_header}"] = f"{rank_cap}/{len(sorted_cap)}" if rank_cap else 'N/A'
+                            else:
+                                rankings[f"{preset}_{cap_header}"] = 'N/A'
+                            # Sector
+                            filtered_sector = [p for p in processed_all if p['metrics'].get('Sector', 'N/A') == target_sector]
+                            if filtered_sector:
+                                sorted_sector = sorted(filtered_sector, key=lambda x: x['final_score'], reverse=True)
+                                rank_sector = next((i+1 for i, p in enumerate(sorted_sector) if p['metrics']['Ticker'] == ticker), None)
+                                rankings[f"{preset}_{sector_header}"] = f"{rank_sector}/{len(filtered_sector)}" if rank_sector else 'N/A'
+                            else:
+                                rankings[f"{preset}_{sector_header}"] = 'N/A'
+                        st.session_state.rankings[ticker] = {'data': rankings, 'timestamp': now}
+                        compute_time = time.time() - start_time
+                        logging.info(f"Computed rankings for {ticker} in {compute_time:.2f}s")
+                    else:
+                        rankings = st.session_state.rankings[ticker]['data']
 
-                # Create 4x3 grid
-                data = {
-                    'All': [rankings[f"{p}_All"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
-                    cap_header: [rankings[f"{p}_{cap_header}"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
-                    sector_header: [rankings[f"{p}_{sector_header}"] for p in ['Value', 'Growth', 'Momentum', 'Quality']]
-                }
-                df_rank = pd.DataFrame(data, index=['Value', 'Growth', 'Momentum', 'Quality'])
-                st.table(df_rank)
+                    if not rankings:
+                        st.info("No rankings computed.")
+                    else:
+                        # Create 4x3 grid
+                        data = {
+                            'All': [rankings[f"{p}_All"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
+                            cap_header: [rankings[f"{p}_{cap_header}"] for p in ['Value', 'Growth', 'Momentum', 'Quality']],
+                            sector_header: [rankings[f"{p}_{sector_header}"] for p in ['Value', 'Growth', 'Momentum', 'Quality']]
+                        }
+                        df_rank = pd.DataFrame(data, index=['Value', 'Growth', 'Momentum', 'Quality'])
+                        st.table(df_rank)
+                else:
+                    st.info("No other stocks available for rankings comparison.")
+                    logging.info(f"No all_metrics for {ticker} rankings")
 
 db_empty = len(get_all_tickers()) == 0
 if db_empty:
@@ -375,19 +379,22 @@ if 'selected_ticker' in st.session_state:
                 logging.info(f"Fetched and saved metrics for {ticker}")
             time.sleep(random.randint(5, 10))
     if metrics:
-            if 'weights' not in st.session_state or 'selected_metrics' not in st.session_state or 'logic' not in st.session_state:
-                logging.info("Using fallback config for summary processing")
-            processed = process_stock(metrics, st.session_state.get('weights', default_weights), st.session_state.get('selected_metrics', default_metrics), st.session_state.get('logic', DEFAULT_LOGIC))
-            history = get_price_history(ticker)
-            if not history:
-                with st.spinner("Fetching price history..."):
-                    fetcher = StockFetcher()
-                    history = fetcher.fetch_history(ticker)
-                    if history:
-                        save_price_history(ticker, history)
-                        logging.info(f"Fetched and saved history for {ticker}")
-                    time.sleep(random.randint(5, 10))
-            with st.expander(f"Summary for {ticker}"):
+        if 'weights' not in st.session_state or 'selected_metrics' not in st.session_state or 'logic' not in st.session_state:
+            logging.info("Using fallback config for summary processing")
+        res = process_stock(metrics, st.session_state.get('weights', default_weights), st.session_state.get('selected_metrics', default_metrics), st.session_state.get('logic', DEFAULT_LOGIC))
+        cap_header = res.get('cap_category', 'Unknown')
+        sector_header = metrics.get('Sector', 'Unknown Sector') or 'Unknown Sector'
+        processed = res
+        history = get_price_history(ticker)
+        if not history:
+            with st.spinner("Fetching price history..."):
+                fetcher = StockFetcher()
+                history = fetcher.fetch_history(ticker)
+                if history:
+                    save_price_history(ticker, history)
+                    logging.info(f"Fetched and saved history for {ticker}")
+                time.sleep(random.randint(5, 10))
+        with st.expander(f"Summary for {ticker}"):
                 # List all metrics in two columns, rounded to 2 decimals where float, skip internals
                 skip_keys = {'fetch_timestamp', 'fetch_id'}
                 large_value_keys = ['Market Cap', 'EV', 'Total Cash', 'Total Debt', 'FCF Actual', 'EBITDA Actual', 'Average Volume']
@@ -446,7 +453,6 @@ if 'selected_ticker' in st.session_state:
                         st.session_state.rankings = {}
                     if 'rankings' not in st.session_state or ticker not in st.session_state.rankings or (now - st.session_state.rankings[ticker]['timestamp']) > timedelta(hours=12):
                         start_time = time.time()
-                        all_metrics = load_all_metrics()
                         rankings = {}
                         target_cap = processed['cap_category']
                         target_sector = metrics.get('Sector', 'N/A')
@@ -466,7 +472,7 @@ if 'selected_ticker' in st.session_state:
                                 rank_cap = next((i+1 for i, p in enumerate(sorted_cap) if p['metrics']['Ticker'] == ticker), None)
                                 rankings[f"{preset}_{cap_header}"] = f"{rank_cap}/{len(sorted_cap)}" if rank_cap else 'N/A'
                             else:
-                                rankings[f"{preset}_Market Cap"] = 'N/A'
+                                rankings[f"{preset}_{cap_header}"] = 'N/A'
                             # Sector
                             filtered_sector = [p for p in processed_all if p['metrics'].get('Sector', 'N/A') == target_sector]
                             if filtered_sector:
@@ -474,7 +480,7 @@ if 'selected_ticker' in st.session_state:
                                 rank_sector = next((i+1 for i, p in enumerate(sorted_sector) if p['metrics']['Ticker'] == ticker), None)
                                 rankings[f"{preset}_{sector_header}"] = f"{rank_sector}/{len(sorted_sector)}" if rank_sector else 'N/A'
                             else:
-                                rankings[f"{preset}_Sector"] = 'N/A'
+                                rankings[f"{preset}_{sector_header}"] = 'N/A'
                         st.session_state.rankings[ticker] = {'data': rankings, 'timestamp': now}
                         compute_time = time.time() - start_time
                         logging.info(f"Computed rankings for {ticker} in {compute_time:.2f}s")

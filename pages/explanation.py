@@ -4,74 +4,77 @@ st.title("QuanticScreen Explanation")
 
 st.header("App Overview")
 st.write("""
-QuanticScreen is a Streamlit-based tool for screening and analyzing publicly traded stocks using fundamental metrics from Yahoo Finance (via yfinance). It allows you to filter datasets, customize scoring logic, view ranked results with details, export to CSV, and explore factor sub-lists. The app auto-fetches data for ~700 prioritized tickers on launch if missing/expired, respecting yfinance limits with rate-limited background threading. Use the sidebar to navigate pages, select datasets/configs, and apply filters. Main features include searchable rankings, column exclusion, and warnings for risks like high P/E.
+QuanticScreen is a web tool for screening and analyzing stocks. It pulls financial data from Yahoo Finance, stores it in a database, and ranks stocks based on customizable scores. Use it to explore presets like Value or Growth, filter by sectors/flags, create custom ticker lists, or dive into individual stock summaries with metrics, graphs, and rankings.
+
+Key pages:
+- **Main**: Select dataset/config, apply filters (sectors, flags Any/All, top N, search), view ranked table, export CSV.
+- **Stock Summary**: Search dropdown (type to filter existing tickers), auto-loads details: all metrics (formatted/rounded), flags, bullet positives, 52W bar, 1Y graph, analyst sentiment, 4x3 rankings (by preset vs. All/Category/Sector).
+- **Customize**: Edit weights (0-0.3), metrics, flag enables/boosts; save new configs (presets read-only).
+- **Manage (Admin)**: Password-protected; refresh stale, add/refresh/delete tickers (rate-limited), prune old data.
+- **Explanation**: This page!
+
+Data refreshes in background for stale metrics (>12h or pre-last market close), even weekends if needed. Custom sets auto-fetch missing metrics for existing stocks.
 """)
 
 st.header("Metrics Explained")
 st.write("""
-The app uses these key metrics (fetched or calculated):
-- **P/E (Price/Earnings)**: Trailing P/E ratio—lower suggests undervalued (fallback: marketCap / trailingEps if missing).
-- **ROE (Return on Equity)**: Profitability relative to equity—higher is better (e.g., >15% positive).
-- **P/B (Price/Book)**: Market vs. book value—low (<1.5) indicates undervalued.
-- **PEG (Price/Earnings to Growth)**: P/E adjusted for growth—low (<1.5) for growth at reasonable price (fallback: P/E / (earningsGrowth * 100) if missing).
-- **Gross Margin**: Revenue after COGS as %—high (>40%) shows efficiency.
-- **Net Profit Margin**: Net income as % of revenue—high (>15%) indicates strong profitability.
-- **FCF % EV TTM (Free Cash Flow % Enterprise Value Trailing 12 Months)**: FCF relative to EV—high (>5%) positive for cash generation.
-- **EBITDA % EV TTM**: EBITDA relative to EV—high (>5%) for operational efficiency.
-- **Current Price**: Latest stock price.
-- **52W High/Low**: 52-week range for momentum context.
-- **Market Cap (MC)**: Total market value (left of EV in table).
-- **EV (Enterprise Value)**: Market cap + debt - cash.
-- **Total Cash/Debt**: Balance sheet liquidity/debt levels.
-- **FCF Actual/EBITDA Actual**: Raw $ values for FCF/EBITDA.
-- **P/FCF (Price to Free Cash Flow)**: Market cap / FCF—low indicates value (fallback: calculated if missing, right of FCF % EV).
-- **Beta**: Volatility vs. market—low (<1) for stability.
-- **Dividend Yield**: Annual dividend %—high (>2%) for income focus.
-- **Average Volume**: Trading liquidity.
-- **RSI (Relative Strength Index)**: Momentum oscillator (30-70 normal; calculated from history if needed).
-N/A values are logged and handled gracefully in scoring (treated as 0 or skipped).
+Metrics are fetched from Yahoo Finance (yfinance) and used for scoring/rankings. 'N/A' if missing (logged; fallbacks for some like PEG = P/E / growth).
+
+- **P/E (Price/Earnings)**: Stock price vs. earnings—lower (<15) often undervalued.
+- **ROE (Return on Equity %)**: Profit from equity—high (>15%) shows efficiency.
+- **P/B (Price/Book)**: Market vs. book value—low (<1.5) undervalued.
+- **PEG (Price/Earnings to Growth)**: P/E adjusted for growth—low (<1.5) good value-growth.
+- **Gross Margin %**: Revenue after costs—high (>40%) strong.
+- **Net Profit Margin %**: Net income %—high (>15%) profitable.
+- **FCF % EV TTM (Free Cash Flow % Enterprise Value)**: Cash gen vs. value—high (>5%) positive.
+- **EBITDA % EV TTM**: Ops cash vs. value—high (>5%) efficient.
+- **P/FCF**: Price vs. free cash—low (<20) undervalued.
+- **D/E (Debt/Equity)**: Leverage—low (<1) healthy.
+- **Beta**: Volatility vs. market—<1 less volatile.
+- **Dividend Yield %**: Annual dividend/price—high attractive for income.
+- **Average Volume**: Trading liquidity—high better.
+- **RSI (Relative Strength Index)**: Momentum (0-100)—<30 oversold, >70 overbought.
+- **Revenue/Earnings Growth %**: Recent quarterly—high (>10%) growth.
+- **Forward PE**: Future P/E—low suggests undervalued.
+- **Analyst Rating/Mean/Target Price/Sentiment**: Aggregated opinions (Bullish/Neutral/Bearish based on mean 1-5).
+- **Current Price/52W High/Low/Market Cap/EV/Total Cash/Debt/FCF/EBITDA Actual**: Raw values for context.
+
+Large numbers (e.g., Market Cap) formatted as '2.5B'. All rounded to 2 decimals in summaries.
 """)
 
-st.header("Scoring Logic")
+st.header("Flags & Positives Explained")
 st.write("""
-Stocks are processed on-the-fly:
-- **Base Score**: Weighted average of included metrics (e.g., lower P/E = higher score; customizable weights 0-0.3).
-- **Boosts**: From enabled flags/correlations (e.g., +15% for 'Undervalued' if P/E <15 and ROE >15; sliders for ±10%).
-- **Factor Boosts**: Additional points per factor (value: low P/E/P/B/high ROE; momentum: near 52W high/high EBITDA % EV; quality: high ROE/low D/E/high margins/dividend/low beta; growth: low PEG/high growth/low D/E).
-- **Final Score**: Base + (base * boost %) + factor points. Excludes negatives if selected. Ranked descending.
-Factor sub-lists show top 5 per factor for focused views.
-""")
+Flags trigger based on conditions, adding boosts/penalties to scores. Positives are descriptive (e.g., "Undervalued with P/E 12.3 and ROE 20%") shown as bullets in summaries/table.
 
-st.header("Flags and Correlations")
-st.write("""
-Flags are conditional tags boosting scores if enabled:
-- **Undervalued**: P/E <15 and ROE >15 (+15%).
-- **Strong Balance Sheet**: D/E <1 and cash > debt (+10%).
-- **Quality Moat**: Gross >40%, net profit >15%, FCF % EV >5% (+15%).
-- **GARP (Growth at Reasonable Price)**: PEG <1.5 and P/E <20 (+10%).
-- **High-Risk Growth**: P/E >30 and PEG <1 (+5%).
-- **Value Trap**: P/B <1.5 and ROE <5 (-10%).
-- **Momentum Building**: Price >90% of 52W high and EBITDA % EV >5% (+10%).
-- **Debt Burden**: D/E >2 and FCF % EV <1 (-15%).
-Customize in the Customize page—enable/disable, adjust boosts.
+- **Undervalued (+15%)**: P/E <15, ROE >15.
+- **Strong Balance Sheet (+10%)**: D/E <1, Cash > Debt.
+- **Quality Moat (+20%)**: Gross >40%, Net >15%, FCF/EV >5%.
+- **GARP (+10%)**: PEG <1.5, P/E <20.
+- **High Growth (+15%)**: Revenue/Earnings Growth >15%, PEG <1.
+- **Value Trap (-10%)**: P/B <1.5, ROE <5.
+- **Momentum Building (+5%)**: Price >90% 52W High, EBITDA/EV >5%.
+- **Debt Burden (-15%)**: D/E >2, FCF/EV <1.
+
+Customize in Customize page—enable/disable, adjust boosts. Rankings grid shows position by preset (Value/Growth/etc.) vs. All/Category/Sector.
 """)
 
 st.header("Usage Tips")
 st.write("""
-- **Datasets**: 'All' for full ~700; cap sizes based on market cap; value/growth presets filter by scores; sectors from DB; custom adds any ticker (validated ^[A-Z0-9.-]{1,5}$), auto-fetches unseeded.
-- **Configs/Presets**: Load Overall (balanced default with broad boosts across value/quality/growth/momentum, penalizing risks), Value (focus on undervalued), Growth (high revenue/EPS/PEG), Momentum (price/RSI/volume), Quality (ROE/D/E/margins/dividend/beta). New configs as NewConfig1 (increment); presets read-only—save as new.
-- **Filters/Search**: Flag multi-select, search ticker/company, top N/show all, exclude negatives.
-- **Table**: Sort columns, exclude via multiselect, export CSV.
-- **Auto-Fetch**: Background on load if >12h or after market (US/Eastern, weekdays 4PM-9:30AM); respects limits with 1s sleep.
-- **Reset**: Delete stock_screen.db to re-seed; restart app for changes.
-- **Analysis Pages**: Stock Analysis for individual charts/metrics/ML; Portfolio/Backtesting for simulations (if implemented).
+- **Getting Started**: If table empty, use Manage (admin password) to add tickers (e.g., from defaults like AAPL, MSFT) or refresh. Custom sets: Enter name/tickers—auto-fetches missing metrics for existing stocks, warns/skips new (add via Manage).
+- **Datasets**: 'All' for full DB; cap categories (Mega/Large/etc.); sectors; presets filter by scores; custom browser-saved.
+- **Configs**: Presets balanced (Overall) or focused (e.g., Growth emphasizes PEG/growth). Save edits as new.
+- **Filters**: Require flags (Any/All for combos), search partial ticker/company, top N (slider), exclude negatives.
+- **Summary**: Dropdown filters as you type (client-side, no refresh); auto-loads on select. Graph/bar refresh if >24h stale.
+- **Admin**: Cooldowns prevent abuse (e.g., 1h add/refresh). Prune olds to save space.
+- **Background Refresh**: Runs in session; checks close-date (fetches if pre-last close, even weekends). Logs in console.
+- **Tips**: For large DB, filter for speed. Export CSV for offline. If errors, check logs (e.g., yfinance misses).
 """)
 
-st.header("Limitations")
+st.header("Limitations & Notes")
 st.write("""
-- yfinance reliance: Gaps/delays possible; fallbacks for PEG/P/FCF/P/E.
-- No real-time: Refresh for updates; auto-fetch not cron-scheduled.
-- Performance: Large datasets may lag; no pagination yet.
-- N/A Handling: Skipped in scoring; warnings logged.
-- Expandability: Add tickers to CSV and run generate_tickers.py for more.
+- **Data**: Yahoo gaps/misses (e.g., PEG calculated fallback). Not real-time—refreshes background/manual.
+- **Custom Sets**: Browser-only (resets on clear/close); no auto-add new tickers.
+- **Performance**: ~1700 tickers fine; larger lags (batched queries help). Free Neon/Streamlit limits storage/traffic.
+- **Security**: Basic password—no full auth. Deploy privately.
+- **Prototype**: No advanced tests/ML/backtesting yet. Expand tickers via tickers.csv/generate_tickers.py.
 """)

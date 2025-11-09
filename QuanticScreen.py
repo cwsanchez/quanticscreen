@@ -584,10 +584,27 @@ with st.spinner('Processing stocks...'):
 # Apply filters based on dataset
 if dataset in st.session_state.get('custom_sets', {}):
     custom_tickers = st.session_state.custom_sets[dataset]
-    valid_tickers = [t for t in custom_tickers if get_latest_metrics(t)]
-    skipped = [t for t in custom_tickers if not get_latest_metrics(t)]
+    all_tickers_db = get_all_tickers()
+    skipped = []
+    fetcher = StockFetcher()
+    for t in custom_tickers:
+        if t not in all_tickers_db:
+            skipped.append(t)
+        elif get_latest_metrics(t) is None:
+            try:
+                metrics = fetcher.fetch_metrics(t)
+                if metrics:
+                    save_metrics(metrics)
+                    logging.info(f"Fetched and saved metrics for {t} in custom set {dataset}")
+                else:
+                    skipped.append(t)
+            except Exception as e:
+                logging.error(f"Error fetching {t}: {e}")
+                skipped.append(t)
+            time.sleep(random.randint(5, 10))
     if skipped:
-        st.warning(f"Tickers {', '.join(skipped)} not found in database and will be skipped. Use Manage page to add new tickers.")
+        st.warning(f"Tickers {', '.join(skipped)} not found in database or fetch failed and will be skipped. Use Manage page to add new tickers.")
+    valid_tickers = [t for t in custom_tickers if get_latest_metrics(t)]
     results = [r for r in results if r['metrics']['Ticker'] in valid_tickers]
 elif dataset == "Large Cap":
     results = [r for r in results if get_float(r['metrics'], "Market Cap") > 10e9]

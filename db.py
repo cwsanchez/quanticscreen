@@ -90,6 +90,10 @@ class MetricFetch(Base):
     revenue_growth = Column(Float)
     earnings_growth = Column(Float)
     forward_pe = Column(Float)
+    analyst_rating = Column(String)
+    analyst_mean = Column(Float)
+    target_price = Column(Float)
+    sentiment = Column(String)
 
     stock = relationship("Stock", back_populates="metric_fetches")
 
@@ -237,6 +241,50 @@ def init_db():
     except Exception as e:
         print(f"Migration error adding forward_pe: {e}")
 
+    try:
+        # Migration: Add analyst_rating column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'analyst_rating' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN analyst_rating VARCHAR'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding analyst_rating: {e}")
+
+    try:
+        # Migration: Add analyst_mean column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'analyst_mean' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN analyst_mean FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding analyst_mean: {e}")
+
+    try:
+        # Migration: Add target_price column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'target_price' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN target_price FLOAT'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding target_price: {e}")
+
+    try:
+        # Migration: Add sentiment column to MetricFetches if not exists
+        if 'MetricFetches' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('MetricFetches')]
+            if 'sentiment' not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE "MetricFetches" ADD COLUMN sentiment VARCHAR'))
+                    conn.commit()
+    except Exception as e:
+        print(f"Migration error adding sentiment: {e}")
+
     # Conditional table creation
     tables = [Stock, MetricFetch, Metadata, ProcessedResult, PriceHistory]
     for table in tables:
@@ -363,6 +411,10 @@ def get_latest_metrics(ticker):
             'Revenue Growth': get_value_from_db(latest_fetch.revenue_growth),
             'Earnings Growth': get_value_from_db(latest_fetch.earnings_growth),
             'Forward PE': get_value_from_db(latest_fetch.forward_pe),
+            'Analyst Rating': get_value_from_db(latest_fetch.analyst_rating),
+            'Analyst Mean': get_value_from_db(latest_fetch.analyst_mean),
+            'Target Price': get_value_from_db(latest_fetch.target_price),
+            'Sentiment': get_value_from_db(latest_fetch.sentiment),
             'fetch_timestamp': latest_fetch.fetch_timestamp,  # Added for potential future use, though not required after seeder simplification
             'fetch_id': latest_fetch.fetch_id  # Added to allow direct access if needed
         }
@@ -453,7 +505,11 @@ def save_metrics(metrics):
         rsi=metrics.get('RSI') if metrics.get('RSI') != 'N/A' else None,
         revenue_growth=metrics.get('Revenue Growth') if metrics.get('Revenue Growth') != 'N/A' else None,
         earnings_growth=metrics.get('Earnings Growth') if metrics.get('Earnings Growth') != 'N/A' else None,
-        forward_pe=metrics.get('Forward PE') if metrics.get('Forward PE') != 'N/A' else None
+        forward_pe=metrics.get('Forward PE') if metrics.get('Forward PE') != 'N/A' else None,
+        analyst_rating=metrics.get('Analyst Rating') if metrics.get('Analyst Rating') != 'N/A' else None,
+        analyst_mean=metrics.get('Analyst Mean') if metrics.get('Analyst Mean') != 'N/A' else None,
+        target_price=metrics.get('Target Price') if metrics.get('Target Price') != 'N/A' else None,
+        sentiment=metrics.get('Sentiment') if metrics.get('Sentiment') != 'N/A' else None
     )
     session.add(fetch)
     session.commit()
@@ -576,6 +632,10 @@ def get_all_latest_metrics():
             'Revenue Growth': fetch.revenue_growth if fetch.revenue_growth is not None else 'N/A',
             'Earnings Growth': fetch.earnings_growth if fetch.earnings_growth is not None else 'N/A',
             'Forward PE': fetch.forward_pe if fetch.forward_pe is not None else 'N/A',
+            'Analyst Rating': fetch.analyst_rating if fetch.analyst_rating is not None else 'N/A',
+            'Analyst Mean': fetch.analyst_mean if fetch.analyst_mean is not None else 'N/A',
+            'Target Price': fetch.target_price if fetch.target_price is not None else 'N/A',
+            'Sentiment': fetch.sentiment if fetch.sentiment is not None else 'N/A',
             'fetch_timestamp': fetch.fetch_timestamp,
             'fetch_id': fetch.fetch_id
         }

@@ -13,6 +13,29 @@ def format_large(val):
     else:
         return f"{round(val, 2)}"
 
+def get_cap_category(market_cap):
+    """
+    Return cap category string based on market cap.
+    """
+    if market_cap == 'N/A':
+        return 'Unknown'
+    try:
+        cap = float(market_cap)
+        if cap > 200e9:
+            return 'Mega Cap'
+        elif cap >= 10e9:
+            return 'Large Cap'
+        elif cap >= 2e9:
+            return 'Mid Cap'
+        elif cap >= 300e6:
+            return 'Small Cap'
+        elif cap >= 50e6:
+            return 'Micro Cap'
+        else:
+            return 'Nano Cap'
+    except (ValueError, TypeError):
+        return 'Unknown'
+
 CONDITIONS = {
     'Undervalued': lambda m: get_float(m, 'P/E') < 15 and get_float(m, 'ROE') > 15,
     'Strong Balance Sheet': lambda m: get_float(m, 'D/E') < 1 and get_float(m, 'Total Cash') > get_float(m, 'Total Debt'),
@@ -23,6 +46,23 @@ CONDITIONS = {
     'Momentum Building': lambda m: get_float(m, 'Current Price') > 0.9 * get_float(m, '52W High') and get_float(m, 'EBITDA % EV TTM') > 5,
     'Debt Burden': lambda m: get_float(m, 'D/E') > 2 and get_float(m, 'FCF % EV TTM') < 1
 }
+
+def get_flag_description(flag, metrics):
+    """
+    Returns a descriptive string for the given flag based on key metrics.
+    Handles N/A gracefully by falling back to flag name if required metrics are missing.
+    """
+    descriptions = {
+        'Undervalued': lambda m: f"Undervalued with P/E {round(get_float(m, 'P/E'), 2)} and ROE {round(get_float(m, 'ROE'), 2)}%" if m.get('P/E', 'N/A') != 'N/A' and m.get('ROE', 'N/A') != 'N/A' else 'Undervalued',
+        'Strong Balance Sheet': lambda m: f"Strong balance sheet with D/E {round(get_float(m, 'D/E'), 2)} and cash exceeding debt" if m.get('D/E', 'N/A') != 'N/A' and m.get('Total Cash', 'N/A') != 'N/A' and m.get('Total Debt', 'N/A') != 'N/A' else 'Strong Balance Sheet',
+        'Quality Moat': lambda m: f"Quality moat with margins {round(get_float(m, 'Gross Margin'), 2)}%/{round(get_float(m, 'Net Profit Margin'), 2)}% and FCF/EV {round(get_float(m, 'FCF % EV TTM'), 2)}%" if all(m.get(k, 'N/A') != 'N/A' for k in ['Gross Margin', 'Net Profit Margin', 'FCF % EV TTM']) else 'Quality Moat',
+        'GARP': lambda m: f"GARP with PEG {round(get_float(m, 'PEG'), 2)} and P/E {round(get_float(m, 'P/E'), 2)}" if m.get('PEG', 'N/A') != 'N/A' and m.get('P/E', 'N/A') != 'N/A' else 'GARP',
+        'High-Risk Growth': lambda m: f"High-risk growth with P/E {round(get_float(m, 'P/E'), 2)} and PEG {round(get_float(m, 'PEG'), 2)}" if m.get('P/E', 'N/A') != 'N/A' and m.get('PEG', 'N/A') != 'N/A' else 'High-Risk Growth',
+        'Value Trap': lambda m: f"Value trap with P/B {round(get_float(m, 'P/B'), 2)} and ROE {round(get_float(m, 'ROE'), 2)}%" if m.get('P/B', 'N/A') != 'N/A' and m.get('ROE', 'N/A') != 'N/A' else 'Value Trap',
+        'Momentum Building': lambda m: f"Momentum building near 52W high with EBITDA/EV {round(get_float(m, 'EBITDA % EV TTM'), 2)}%" if m.get('Current Price', 'N/A') != 'N/A' and m.get('52W High', 'N/A') != 'N/A' and m.get('EBITDA % EV TTM', 'N/A') != 'N/A' else 'Momentum Building',
+        'Debt Burden': lambda m: f"Debt burden with D/E {round(get_float(m, 'D/E'), 2)} and FCF/EV {round(get_float(m, 'FCF % EV TTM'), 2)}%" if m.get('D/E', 'N/A') != 'N/A' and m.get('FCF % EV TTM', 'N/A') != 'N/A' else 'Debt Burden'
+    }
+    return descriptions.get(flag, lambda m: flag)(metrics)
 
 DEFAULT_LOGIC = {
     'Undervalued': {'enabled': True, 'boost': 15},
@@ -133,16 +173,16 @@ def process_stock(metrics, weights=None, selected_metrics=None, logic=DEFAULT_LO
     # Step 4: Correlations & Flags (Boost/Penalty %)
     flags = []
     boost_total = 0
-    positives = ""
+    positives = []
     risks = ""
     for flag in logic:
         if logic[flag]['enabled'] and flag in CONDITIONS and CONDITIONS[flag](metrics):
             flags.append(flag)
             boost = logic[flag]['boost']
             boost_total += boost
-            if boost > 0:
-                positives += f'{flag} (+{boost}%) '
-            else:
+            desc = get_flag_description(flag, metrics)
+            positives.append(desc)
+            if boost < 0:
                 risks += f'{flag} ({boost}%) '
 
     # Step 5: Factor Lens (Extra Boosts, sub-rankings in main.py)
@@ -163,7 +203,7 @@ def process_stock(metrics, weights=None, selected_metrics=None, logic=DEFAULT_LO
 
     # If positives or risks are empty, use defaults
     if not positives:
-        positives = "Solid fundamentals based on available metrics."
+        positives = ["Solid fundamentals based on available metrics."]
     if not risks:
         risks = "Low risks based on available metrics."
 
@@ -174,7 +214,8 @@ def process_stock(metrics, weights=None, selected_metrics=None, logic=DEFAULT_LO
         'positives': positives,
         'risks': risks,
         'factor_boosts': factor_boosts,  # For sub-rankings
-        'metrics': metrics  # Original for details
+        'metrics': metrics,  # Original for details
+        'cap_category': get_cap_category(metrics.get('Market Cap', 'N/A'))
     }
 
 # Test

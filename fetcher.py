@@ -32,6 +32,18 @@ class StockFetcher:
                 else:
                     latest_rsi = 'N/A'
                 info = stock.info
+                # Analyst sentiment
+                analyst_rating = info.get('recommendationKey', 'N/A')
+                analyst_mean = info.get('recommendationMean', 'N/A')
+                target_price = info.get('targetMeanPrice', 'N/A')
+                sentiment = 'N/A'
+                if analyst_mean != 'N/A' and isinstance(analyst_mean, (int, float)):
+                    if analyst_mean <= 2:
+                        sentiment = 'Bullish'
+                    elif analyst_mean == 3:
+                        sentiment = 'Neutral'
+                    else:
+                        sentiment = 'Bearish'
                 # Extract and format metrics
                 pe = info.get('trailingPE', None)
                 if pe is None:
@@ -95,7 +107,11 @@ class StockFetcher:
                     "Beta": info.get('beta', 'N/A'),
                     "Dividend Yield": info.get('dividendYield', 'N/A') * 100 if info.get('dividendYield') else 'N/A',
                     "Average Volume": info.get('averageVolume', 'N/A'),
-                    "RSI": latest_rsi
+                    "RSI": latest_rsi,
+                    "Analyst Rating": analyst_rating,
+                    "Analyst Mean": analyst_mean,
+                    "Target Price": target_price,
+                    "Sentiment": sentiment
                 }
         
                 # Log missing metrics

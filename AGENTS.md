@@ -3,24 +3,48 @@
 ## Cursor Cloud specific instructions
 
 ### Overview
-QuanticScreen is a Streamlit-based stock screening web app. See `README.md` for full architecture and usage details.
+
+QuanticScreen is a modern Next.js (App Router) stock screening web app backed by Supabase (PostgreSQL) and Yahoo Finance data. See `README.md` for full architecture and usage details.
 
 ### Running the app
-```
-streamlit run QuanticScreen.py --server.port 8501 --server.headless true
-```
-The app uses SQLite fallback (`stock_screen.db`) automatically when no `DATABASE_URL` is configured. With an empty DB, sample data (AAPL, MSFT, GOOGL, TSLA) is displayed.
 
-### Secrets
-The app reads `.streamlit/secrets.toml` for `DATABASE_URL` and `admin_password`. This file is gitignored. For local dev without a cloud DB, the app falls back to SQLite — no secrets file is needed.
+```bash
+npm install
+npm run dev
+```
 
-### Lint / type checking
-No lint or test tooling is configured in the repo. You can run:
-- `pyright` for type checking (pre-existing type errors exist in the codebase; these are not regressions)
-- `python3 -m py_compile <file>` for syntax verification
+The dev server starts on `http://localhost:3000`. The app requires a Supabase project with the schema from `supabase/migrations/001_initial_schema.sql` applied.
+
+### Environment variables
+
+Copy `.env.local.example` to `.env.local` and fill in:
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase **Publishable key** (called "anon key" in env vars)
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase **Secret key** (server-side only)
+- `ADMIN_PASSWORD` — Password for the `/admin` panel
+- `CRON_SECRET` — Bearer token for the `/api/cron` endpoint (optional locally)
+
+### Build & lint
+
+```bash
+npm run build    # Production build
+npm run lint     # ESLint
+```
+
+No test suite is configured. Use `npx tsc --noEmit` for type checking.
 
 ### Gotchas
-- `libpq-dev` must be installed as a system package for `psycopg[binary]` to install. The update script handles this.
-- The `db.py` module uses `sqlalchemy.dialects.sqlite.insert` for its `set_metadata` upsert, which means the `on_conflict_do_update` path only works with SQLite. This is fine for local dev but keep it in mind when reasoning about PostgreSQL behavior.
-- The Streamlit `config.toml` sets `fileWatcherType = "none"`, so hot-reload on file changes is disabled. You must restart the Streamlit server after code changes.
-- Background fetch threads (`fetch_bg`) start automatically on first page load and poll every 15 minutes. These may produce network errors in the logs when Yahoo Finance is unreachable — this is expected and non-blocking.
+
+- The app uses `yahoo-finance2` for market data. Yahoo Finance may rate-limit or return errors — this is expected and non-blocking.
+- The cron handler (`/api/cron`) includes randomized sleep between fetches to avoid rate limits.
+- The admin panel uses client-side password auth; the API validates `ADMIN_PASSWORD` server-side on each request.
+- `vercel.json` configures a cron schedule (`0 */4 * * *`) that only runs when deployed to Vercel.
+- Hot reload works normally in dev mode (`next dev`).
+
+### Final polish pass (April 2026)
+
+This codebase was fully rewritten from a Streamlit/Python app to Next.js + Supabase (PR #9). A final polish pass updated:
+- `README.md` — Complete rewrite for the new Next.js architecture
+- `AGENTS.md` — Updated from stale Streamlit references to current Next.js stack
+- `.env.local.example` — Comments updated to reference current Supabase UI labels ("Publishable key" / "Secret key")
+- Build verified clean; Supabase connection tested

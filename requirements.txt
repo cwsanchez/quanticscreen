@@ -1,9 +1,0 @@
-# requirements.txt
-requests
-python-dotenv
-streamlit
-yfinance
-pandas
-sqlalchemy
-numpy
-psycopg[binary]>=3.2.1

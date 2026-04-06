@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+
 import { fetchStockMetrics } from '@/lib/yahoo';
 import { saveMetrics, getStaleTickers, getLatestMetrics, pruneOldMetrics, getMetadata, setMetadata } from '@/lib/db';
 import { sleep, randomInt } from '@/lib/utils';

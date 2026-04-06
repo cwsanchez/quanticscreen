@@ -1,47 +1,48 @@
 import yahooFinance from 'yahoo-finance2';
 import type { StockMetrics, PriceHistoryPoint } from '@/types';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 export async function fetchStockMetrics(
   ticker: string
 ): Promise<StockMetrics | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const quote = await yahooFinance.quoteSummary(ticker, {
+      const quote: any = await yahooFinance.quoteSummary(ticker, {
         modules: [
           'price',
           'summaryDetail',
           'defaultKeyStatistics',
           'financialData',
-          'recommendationTrend',
-          'earningsTrend',
+          'assetProfile',
         ],
       });
 
-      const price = quote.price;
-      const summary = quote.summaryDetail;
-      const keyStats = quote.defaultKeyStatistics;
-      const financial = quote.financialData;
+      const price = quote.price ?? {};
+      const summary = quote.summaryDetail ?? {};
+      const keyStats = quote.defaultKeyStatistics ?? {};
+      const financial = quote.financialData ?? {};
+      const profile = quote.assetProfile ?? {};
 
-      const marketCap = price?.marketCap ?? null;
-      const freeCashflow = financial?.freeCashflow ?? null;
-      const ev = keyStats?.enterpriseValue ?? null;
-      const ebitda = financial?.ebitda ?? null;
+      const marketCap = price.marketCap ?? null;
+      const freeCashflow = financial.freeCashflow ?? null;
+      const ev = keyStats.enterpriseValue ?? null;
+      const ebitda = financial.ebitda ?? null;
 
-      let pe: number | 'N/A' = summary?.trailingPE ?? 'N/A';
-      if (pe === 'N/A' && marketCap && financial?.earningsGrowth) {
-        const trailingEps = price?.regularMarketPrice
-          ? marketCap / (price.regularMarketPrice * 1)
+      let pe: number | 'N/A' = summary.trailingPE ?? 'N/A';
+      if (pe === 'N/A') {
+        const trailingEps = price.regularMarketPrice && marketCap
+          ? marketCap / price.regularMarketPrice
           : null;
-        if (trailingEps && trailingEps !== 0) {
+        if (trailingEps && trailingEps !== 0 && marketCap) {
           pe = marketCap / trailingEps;
         }
       }
 
-      let peg: number | 'N/A' = keyStats?.pegRatio ?? 'N/A';
+      let peg: number | 'N/A' = keyStats.pegRatio ?? 'N/A';
       if (peg === 'N/A') {
-        const peForPeg =
-          (summary?.trailingPE ?? summary?.forwardPE) ?? null;
-        const growth = keyStats?.earningsQuarterlyGrowth ?? 0;
+        const peForPeg = summary.trailingPE ?? summary.forwardPE ?? null;
+        const growth = keyStats.earningsQuarterlyGrowth ?? 0;
         if (peForPeg && growth > 0) {
           peg = peForPeg / (growth * 100);
         }
@@ -52,16 +53,16 @@ export async function fetchStockMetrics(
         pFcf = marketCap / freeCashflow;
       }
 
-      const roe = financial?.returnOnEquity
+      const roe = financial.returnOnEquity != null
         ? financial.returnOnEquity * 100
         : 'N/A';
-      const deRaw = financial?.debtToEquity;
+      const deRaw = financial.debtToEquity;
       const de = deRaw != null ? deRaw / 100 : 'N/A';
 
-      const grossMargins = financial?.grossMargins
+      const grossMargins = financial.grossMargins != null
         ? financial.grossMargins * 100
         : 'N/A';
-      const profitMargins = financial?.profitMargins
+      const profitMargins = financial.profitMargins != null
         ? financial.profitMargins * 100
         : 'N/A';
 
@@ -69,20 +70,20 @@ export async function fetchStockMetrics(
         freeCashflow && ev ? (freeCashflow / ev) * 100 : 'N/A';
       const ebitdaEv = ebitda && ev ? (ebitda / ev) * 100 : 'N/A';
 
-      const dividendYield = summary?.dividendYield
+      const dividendYield = summary.dividendYield != null
         ? summary.dividendYield * 100
         : 'N/A';
 
-      const revenueGrowth = financial?.revenueGrowth
+      const revenueGrowth = financial.revenueGrowth != null
         ? financial.revenueGrowth * 100
         : 'N/A';
-      const earningsGrowth = financial?.earningsGrowth
+      const earningsGrowth = financial.earningsGrowth != null
         ? financial.earningsGrowth * 100
         : 'N/A';
 
-      const analystRating = financial?.recommendationKey ?? 'N/A';
-      const analystMean = financial?.recommendationMean ?? 'N/A';
-      const targetPrice = financial?.targetMeanPrice ?? 'N/A';
+      const analystRating = financial.recommendationKey ?? 'N/A';
+      const analystMean = financial.recommendationMean ?? 'N/A';
+      const targetPrice = financial.targetMeanPrice ?? 'N/A';
 
       let sentiment: string | 'N/A' = 'N/A';
       if (typeof analystMean === 'number') {
@@ -93,18 +94,20 @@ export async function fetchStockMetrics(
 
       let rsi: number | 'N/A' = 'N/A';
       try {
-        const hist = await yahooFinance.chart(ticker, {
+        const hist: any = await yahooFinance.chart(ticker, {
           period1: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000)
             .toISOString()
             .split('T')[0],
           interval: '1d',
         });
-        const closes =
-          hist.quotes?.map((q) => q.close).filter(Boolean) ?? [];
+        const closes: number[] =
+          (hist.quotes ?? [])
+            .map((q: any) => q.close)
+            .filter((c: any) => c != null) ?? [];
         if (closes.length >= 14) {
-          const deltas = [];
+          const deltas: number[] = [];
           for (let i = 1; i < closes.length; i++) {
-            deltas.push((closes[i] as number) - (closes[i - 1] as number));
+            deltas.push(closes[i] - closes[i - 1]);
           }
           const gains = deltas.map((d) => (d > 0 ? d : 0));
           const losses = deltas.map((d) => (d < 0 ? -d : 0));
@@ -121,58 +124,45 @@ export async function fetchStockMetrics(
           rsi = 100 - 100 / (1 + rs);
         }
       } catch {
-        // RSI calculation failed, leave as N/A
+        // RSI calculation failed
       }
 
       const metrics: StockMetrics = {
         Ticker: ticker,
-        'Company Name': price?.longName ?? price?.shortName ?? 'N/A',
-        Industry: price?.quoteType === 'EQUITY' ? (summary as Record<string, unknown>)?.industry as string ?? 'N/A' : 'N/A',
-        Sector: 'N/A',
+        'Company Name': price.longName ?? price.shortName ?? 'N/A',
+        Industry: profile.industry ?? 'N/A',
+        Sector: profile.sector ?? 'N/A',
         'P/E': pe,
         ROE: roe,
         'D/E': de,
-        'P/B': summary?.priceToBook ?? 'N/A',
+        'P/B': summary.priceToBook ?? 'N/A',
         PEG: peg,
         'Gross Margin': grossMargins,
         'Net Profit Margin': profitMargins,
         'FCF % EV TTM': fcfEv,
         'EBITDA % EV TTM': ebitdaEv,
-        'Current Price': price?.regularMarketPrice ?? 'N/A',
-        '52W High': summary?.fiftyTwoWeekHigh ?? 'N/A',
-        '52W Low': summary?.fiftyTwoWeekLow ?? 'N/A',
+        'Current Price': price.regularMarketPrice ?? 'N/A',
+        '52W High': summary.fiftyTwoWeekHigh ?? 'N/A',
+        '52W Low': summary.fiftyTwoWeekLow ?? 'N/A',
         'Market Cap': marketCap ?? 'N/A',
         EV: ev ?? 'N/A',
-        'Total Cash': financial?.totalCash ?? 'N/A',
-        'Total Debt': financial?.totalDebt ?? 'N/A',
+        'Total Cash': financial.totalCash ?? 'N/A',
+        'Total Debt': financial.totalDebt ?? 'N/A',
         'FCF Actual': freeCashflow ?? 'N/A',
         'EBITDA Actual': ebitda ?? 'N/A',
         'P/FCF': pFcf,
-        Beta: summary?.beta ?? 'N/A',
+        Beta: summary.beta ?? 'N/A',
         'Dividend Yield': dividendYield,
-        'Average Volume': price?.averageDailyVolume3Month ?? summary?.averageVolume ?? 'N/A',
+        'Average Volume': price.averageDailyVolume3Month ?? summary.averageVolume ?? 'N/A',
         RSI: rsi,
         'Revenue Growth': revenueGrowth,
         'Earnings Growth': earningsGrowth,
-        'Forward P/E': summary?.forwardPE ?? 'N/A',
+        'Forward P/E': summary.forwardPE ?? 'N/A',
         'Analyst Rating': analystRating,
         'Analyst Mean': analystMean,
         'Target Price': targetPrice,
         Sentiment: sentiment,
       };
-
-      // Try to get sector/industry from quote modules
-      try {
-        const assetProfile = await yahooFinance.quoteSummary(ticker, {
-          modules: ['assetProfile'],
-        });
-        if (assetProfile.assetProfile) {
-          metrics.Sector = assetProfile.assetProfile.sector ?? 'N/A';
-          metrics.Industry = assetProfile.assetProfile.industry ?? metrics.Industry;
-        }
-      } catch {
-        // Sector/Industry fetch failed
-      }
 
       return metrics;
     } catch (err) {
@@ -201,7 +191,7 @@ export async function fetchPriceHistory(
     const days = periodMap[period] ?? 365;
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const result = await yahooFinance.chart(ticker, {
+    const result: any = await yahooFinance.chart(ticker, {
       period1: startDate.toISOString().split('T')[0],
       interval: '1d',
     });
@@ -209,10 +199,10 @@ export async function fetchPriceHistory(
     if (!result.quotes || result.quotes.length === 0) return [];
 
     return result.quotes
-      .filter((q) => q.close != null && q.date != null)
-      .map((q) => ({
-        date: new Date(q.date!).toISOString().split('T')[0],
-        close: Number(q.close!.toFixed(2)),
+      .filter((q: any) => q.close != null && q.date != null)
+      .map((q: any) => ({
+        date: new Date(q.date).toISOString().split('T')[0],
+        close: Number(Number(q.close).toFixed(2)),
       }));
   } catch (err) {
     console.error(`Failed to fetch history for ${ticker}:`, err);
@@ -224,20 +214,20 @@ export async function searchTickers(
   query: string
 ): Promise<Array<{ symbol: string; name: string; type: string; exchange: string }>> {
   try {
-    const results = await yahooFinance.search(query, { newsCount: 0 });
+    const results: any = await yahooFinance.search(query, { newsCount: 0 });
     return (results.quotes ?? [])
       .filter(
-        (q) =>
+        (q: any) =>
           q.quoteType === 'EQUITY' &&
           q.symbol &&
           !q.symbol.includes('.')
       )
       .slice(0, 10)
-      .map((q) => ({
+      .map((q: any) => ({
         symbol: q.symbol ?? '',
-        name: (q as Record<string, unknown>).longname as string ?? (q as Record<string, unknown>).shortname as string ?? q.symbol ?? '',
+        name: q.longname ?? q.shortname ?? q.symbol ?? '',
         type: q.quoteType ?? '',
-        exchange: (q as Record<string, unknown>).exchange as string ?? '',
+        exchange: q.exchange ?? '',
       }));
   } catch (err) {
     console.error('Search failed:', err);

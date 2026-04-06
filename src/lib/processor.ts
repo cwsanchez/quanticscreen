@@ -8,7 +8,7 @@ import type {
 } from '@/types';
 
 export function getFloat(metrics: StockMetrics, key: string): number {
-  const val = (metrics as Record<string, unknown>)[key];
+  const val = (metrics as unknown as Record<string, unknown>)[key];
   if (val === 'N/A' || val === null || val === undefined) return 0;
   const num = Number(val);
   return isNaN(num) ? 0 : num;

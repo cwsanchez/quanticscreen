@@ -3,10 +3,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase-browser';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Pin, X, GripVertical, ChevronDown, ChevronUp, Loader2, Star } from 'lucide-react';
+import { Pin, X, ChevronDown, ChevronUp, Loader2, Star } from 'lucide-react';
 import type { PriceHistoryPoint } from '@/types';
 
 interface WatchlistItem {
@@ -75,7 +74,22 @@ export function WatchlistSidebar({
     setLoading(false);
   }, [user]);
 
-  useEffect(() => { fetchWatchlist(); }, [fetchWatchlist]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!user) { if (!cancelled) { setItems([]); setLoading(false); } return; }
+      try {
+        const res = await fetch('/api/watchlist');
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setItems(data);
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;

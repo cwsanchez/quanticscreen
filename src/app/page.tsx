@@ -9,7 +9,6 @@ import {
   Zap,
   ArrowRight,
   Loader2,
-  Pin,
   Database,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';

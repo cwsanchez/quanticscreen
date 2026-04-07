@@ -124,6 +124,30 @@ If your Supabase connection is configured correctly and you've run the migration
 
 ---
 
+## Authentication
+
+QuanticScreen uses **email + password** authentication via Supabase Auth. There is no Google OAuth, magic links, or other social login — just classic email/password.
+
+### How it works
+
+- `/login` — Sign In / Create Account tabs with email + password fields
+- Protected routes (`/screener`, `/builder`, `/presets`, `/admin`) require authentication; unauthenticated users are redirected to `/login`
+- Public routes (`/`, `/ticker/[symbol]`) remain accessible without login
+- Session management uses `@supabase/ssr` with cookie-based sessions and Next.js middleware
+- The Navbar shows the logged-in user's email and a Sign Out button
+
+### One-time Supabase setup
+
+In your Supabase Dashboard → **Authentication → Providers**:
+
+1. **Enable** the **Email** provider (should be enabled by default)
+2. **Disable** Google and any other OAuth providers (if enabled)
+3. Optionally disable "Confirm email" under **Authentication → Settings** for faster local development (users can sign in immediately after sign-up)
+
+That's it — no OAuth client IDs or redirect URLs needed.
+
+---
+
 ## How to Seed Initial Data
 
 1. Navigate to [http://localhost:3000/admin](http://localhost:3000/admin)
@@ -197,8 +221,10 @@ That's it. Your stock screener is live.
 
 ```
 src/
-├── app/                        # Next.js App Router pages
+├── middleware.ts               # Session refresh + route protection
+├── app/
 │   ├── page.tsx               # Home — hero search with mini-cards
+│   ├── login/page.tsx         # Email + password sign-in / sign-up
 │   ├── screener/page.tsx      # Stock screener with TanStack table
 │   ├── ticker/[symbol]/       # Stock detail page
 │   ├── builder/page.tsx       # Custom logic builder
@@ -211,15 +237,20 @@ src/
 │   │       ├── fetch/         # Fetch & score single stock
 │   │       ├── process/       # Score all stocks (GET preset, POST custom)
 │   │       └── refresh/       # Admin actions
-│   └── auth/callback/         # Supabase auth callback
+│   └── auth/callback/         # Supabase auth callback (PKCE code exchange)
 ├── components/
-│   ├── Navbar.tsx             # Navigation bar
+│   ├── AuthProvider.tsx       # Auth context (user state, sign-out)
+│   ├── Navbar.tsx             # Navigation bar with auth state
 │   └── ui/                    # shadcn/ui primitives
 ├── lib/
+│   ├── supabase/
+│   │   ├── client.ts          # Browser Supabase client (@supabase/ssr)
+│   │   ├── server.ts          # Server Supabase client (@supabase/ssr)
+│   │   └── middleware.ts      # Middleware session helper
+│   ├── supabase.ts            # Legacy Supabase client (service role for DB ops)
 │   ├── processor.ts           # Scoring engine
 │   ├── yahoo.ts               # Yahoo Finance data fetcher
 │   ├── db.ts                  # Supabase database operations
-│   ├── supabase.ts            # Supabase client (anon + service role)
 │   ├── tickers.ts             # Default ticker list (700+)
 │   └── utils.ts               # Utility functions
 └── types/

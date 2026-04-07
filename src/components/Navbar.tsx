@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/AuthProvider';
 import {
   BarChart3,
   Search,
@@ -12,6 +13,8 @@ import {
   Home,
   Menu,
   X,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -26,6 +29,7 @@ const navItems = [
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, loading, signOut } = useAuth();
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-xl">
@@ -62,6 +66,31 @@ export function Navbar() {
                 </Link>
               );
             })}
+
+            <div className="ml-3 flex items-center gap-2 border-l pl-3 border-border/50">
+              {loading ? null : user ? (
+                <>
+                  <span className="hidden text-xs text-muted-foreground lg:inline truncate max-w-[160px]">
+                    {user.email}
+                  </span>
+                  <button
+                    onClick={signOut}
+                    className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Sign In
+                </Link>
+              )}
+            </div>
           </div>
 
           <button
@@ -102,6 +131,35 @@ export function Navbar() {
                 </Link>
               );
             })}
+
+            <div className="border-t border-border/50 pt-2 mt-2">
+              {loading ? null : user ? (
+                <>
+                  <p className="px-3 py-1 text-xs text-muted-foreground truncate">
+                    {user.email}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setMobileOpen(false);
+                      signOut();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Sign In
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -9,7 +9,6 @@ import {
   Search,
   Sliders,
   BookOpen,
-  Shield,
   Home,
   Menu,
   X,
@@ -17,17 +16,18 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 
 const navItems = [
-  { href: '/', label: 'Home', icon: Home },
+  { href: '/', label: 'Dashboard', icon: Home },
   { href: '/screener', label: 'Screener', icon: BarChart3 },
   { href: '/builder', label: 'Builder', icon: Sliders },
   { href: '/presets', label: 'Presets', icon: BookOpen },
-  { href: '/admin', label: 'Admin', icon: Shield },
 ];
 
 export function Navbar() {
   const pathname = usePathname();
+  const { user, signOut, loading } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, loading, signOut } = useAuth();
 
@@ -67,27 +67,27 @@ export function Navbar() {
               );
             })}
 
-            <div className="ml-3 flex items-center gap-2 border-l pl-3 border-border/50">
+            <div className="ml-2 border-l pl-2 border-border/50">
               {loading ? null : user ? (
-                <>
-                  <span className="hidden text-xs text-muted-foreground lg:inline truncate max-w-[160px]">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground max-w-[120px] truncate">
                     {user.email}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={signOut}
-                    className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground"
                   >
                     <LogOut className="h-4 w-4" />
-                    Sign Out
-                  </button>
-                </>
+                  </Button>
+                </div>
               ) : (
-                <Link
-                  href="/login"
-                  className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <LogIn className="h-4 w-4" />
-                  Sign In
+                <Link href="/login">
+                  <Button variant="ghost" size="sm">
+                    <LogIn className="mr-1 h-4 w-4" />
+                    Sign In
+                  </Button>
                 </Link>
               )}
             </div>
@@ -131,29 +131,20 @@ export function Navbar() {
                 </Link>
               );
             })}
-
-            <div className="border-t border-border/50 pt-2 mt-2">
-              {loading ? null : user ? (
-                <>
-                  <p className="px-3 py-1 text-xs text-muted-foreground truncate">
-                    {user.email}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setMobileOpen(false);
-                      signOut();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign Out
-                  </button>
-                </>
+            <div className="border-t pt-2 mt-2">
+              {user ? (
+                <button
+                  onClick={() => { signOut(); setMobileOpen(false); }}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
               ) : (
                 <Link
                   href="/login"
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
                   <LogIn className="h-4 w-4" />
                   Sign In

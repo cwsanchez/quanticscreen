@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -91,18 +91,14 @@ function PresetCard({
 
 export default function PresetsPage() {
   const router = useRouter();
-  const [savedConfigs, setSavedConfigs] = useState<Record<string, ProcessorConfig>>({});
-
-  useEffect(() => {
+  const [savedConfigs, setSavedConfigs] = useState<Record<string, ProcessorConfig>>(() => {
+    if (typeof window === 'undefined') return {};
     const stored = localStorage.getItem('quanticscreen_configs');
     if (stored) {
-      try {
-        setSavedConfigs(JSON.parse(stored));
-      } catch {
-        // ignore
-      }
+      try { return JSON.parse(stored); } catch { /* ignore */ }
     }
-  }, []);
+    return {};
+  });
 
   const exportConfig = (name: string, config: ProcessorConfig | { logic: LogicConfig }) => {
     const full: ProcessorConfig = {

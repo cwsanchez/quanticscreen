@@ -1,174 +1,93 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/components/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Mail, Loader2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
-import { Loader2, Search, Mail, Lock } from 'lucide-react';
 
 export default function LoginPage() {
+  const { user, signInWithEmail, signInWithGoogle } = useAuth();
   const router = useRouter();
-  const supabase = createClient();
-
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [sent, setSent] = useState(false);
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
-      toast.error('Please enter both email and password');
-      return;
-    }
+  useEffect(() => {
+    if (user) router.replace('/');
+  }, [user, router]);
+
+  const handleEmailLogin = async () => {
+    if (!email) { toast.error('Enter your email'); return; }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await signInWithEmail(email);
     setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    toast.success('Signed in successfully');
-    router.push('/');
-    router.refresh();
+    if (error) { toast.error(error.message); return; }
+    setSent(true);
+    toast.success('Check your email for the login link!');
   };
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
-      toast.error('Please enter both email and password');
-      return;
-    }
-    if (password.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    toast.success('Account created! Check your email to confirm, then sign in.');
-  };
+  if (user) return null;
 
   return (
-    <div className="flex min-h-[70vh] items-center justify-center">
-      <Card className="w-full max-w-md border-border/30 bg-card/50 backdrop-blur">
-        <CardHeader className="space-y-3 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <Search className="h-6 w-6 text-primary" />
-          </div>
-          <CardTitle className="text-2xl font-bold tracking-tight">
-            Quantic<span className="text-primary">Screen</span>
-          </CardTitle>
-          <CardDescription>
-            Sign in to access the screener, builder, presets, and more.
-          </CardDescription>
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <Card className="w-full max-w-sm border-border/30 bg-card/50">
+        <CardHeader className="text-center">
+          <CardTitle>Sign In</CardTitle>
+          <CardDescription>Sign in to pin stocks and build your personal watchlist</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="signin" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Create Account</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="signin">
-              <form onSubmit={handleSignIn} className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signin-email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="signin-email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10"
-                      autoComplete="email"
-                      required
-                    />
-                  </div>
+        <CardContent className="space-y-4">
+          {sent ? (
+            <div className="text-center py-4">
+              <Mail className="mx-auto mb-3 h-10 w-10 text-primary" />
+              <p className="text-sm text-muted-foreground">
+                Magic link sent to <strong>{email}</strong>. Check your inbox!
+              </p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <Label htmlFor="email" className="mb-1.5 block text-xs">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleEmailLogin(); }}
+                />
+              </div>
+              <Button className="w-full" onClick={handleEmailLogin} disabled={loading}>
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                Send Magic Link
+              </Button>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="signin-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10"
-                      autoComplete="current-password"
-                      required
-                    />
-                  </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">or</span>
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  Sign In
-                </Button>
-              </form>
-            </TabsContent>
-
-            <TabsContent value="signup">
-              <form onSubmit={handleSignUp} className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10"
-                      autoComplete="email"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      placeholder="Min. 6 characters"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10"
-                      autoComplete="new-password"
-                      minLength={6}
-                      required
-                    />
-                  </div>
-                </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  Create Account
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={async () => {
+                  setGoogleLoading(true);
+                  await signInWithGoogle();
+                }}
+                disabled={googleLoading}
+              >
+                {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
+                Continue with Google
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

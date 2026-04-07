@@ -1,7 +1,9 @@
-import yahooFinance from 'yahoo-finance2';
+import YahooFinance from 'yahoo-finance2';
 import type { StockMetrics, PriceHistoryPoint } from '@/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+const yahooFinance = new YahooFinance();
 
 export async function fetchStockMetrics(
   ticker: string

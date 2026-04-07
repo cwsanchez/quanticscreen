@@ -1,30 +1,33 @@
 # QuanticScreen
 
-A modern, production-ready stock screening platform built with Next.js — like Yahoo Finance, but actually good. Custom multi-factor scoring, proprietary flags, a full logic builder, and a dark-mode-first UI that makes screening stocks a pleasure.
+Your personal stock research dashboard — built with Next.js, Supabase, and Yahoo Finance data. Multi-factor scoring, smart flag analysis, custom watchlists, and preset strategies in a clean dark-mode UI.
 
 ![Next.js](https://img.shields.io/badge/Next.js-App_Router-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38bdf8)
-![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ecf8e)
+![Supabase](https://img.shields.io/badge/Supabase-Auth_+_Postgres-3ecf8e)
 
 ---
 
 ## Overview
 
-QuanticScreen is a modern Yahoo Finance replacement with custom scoring and logic builder capabilities. It combines real-time Yahoo Finance data with a proprietary multi-factor scoring engine, letting you screen, rank, and analyze stocks with far more depth than any free tool.
+QuanticScreen is a personal stock research dashboard that combines real-time Yahoo Finance data with a proprietary multi-factor scoring engine. Search, score, and analyze stocks with depth and flexibility. Sign in to build a personal watchlist and pin your favorite tickers.
 
 **Key capabilities:**
 
-- **Smart Search** — Type-ahead ticker search with instant mini-cards (key metrics + sparkline charts)
+- **Dashboard** — Search any ticker with type-ahead, view mini-cards with key metrics + sparkline charts, and pin stocks to your watchlist
+- **Personal Watchlist** — Sidebar showing your pinned stocks with live pricing, sparklines, and one-click access to full reports (requires sign-in)
 - **Multi-Factor Scoring** — Weighted scoring across 8+ fundamental metrics with customizable normalizers
-- **8 Proprietary Flags** — Undervalued, Strong Balance Sheet, Quality Moat, GARP, High-Risk Growth, Value Trap, Momentum Building, Debt Burden
+- **8 Analytical Flags** — Undervalued, Strong Balance Sheet, Quality Moat, GARP, High-Risk Growth, Value Trap, Momentum Building, Debt Burden
 - **5 Built-in Presets** — Overall, Value, Growth, Momentum, Quality — each with tuned flag boost weights
-- **Advanced Screener** — TanStack Table v8 with sorting, filtering, column visibility, pagination, and CSV export
+- **Advanced Screener** — TanStack Table v8 with sorting, filtering, column visibility, pagination, and CSV export; loads on demand via "Search" button
 - **Stock Detail Pages** — Full metric breakdown, price charts (Recharts), 52-week range bar, factor boost cards, preset rankings
 - **Custom Logic Builder** — Build your own scoring strategy: select metrics, adjust weights, configure flag boosts, preview results
-- **Admin Panel** — Password-protected bulk operations: refresh stale data, add/delete tickers, prune old metrics
+- **Auth** — Supabase Auth with email magic-link and Google provider; watchlist and pin features require sign-in
+- **Auto-Insert Tickers** — Searching a ticker that doesn't exist in the database automatically fetches and inserts it
+- **Seed Popular Tickers** — One-click button to seed the database with 700+ popular ticker symbols
 - **Background Refresh** — Vercel Cron job for automated metric updates with market-close-aware scheduling
-- **Dark Mode Default** — Professional finance-grade UI with dark theme and responsive design
+- **Dark Mode** — Professional finance-grade UI with dark theme and responsive design
 
 ---
 
@@ -35,10 +38,11 @@ QuanticScreen is a modern Yahoo Finance replacement with custom scoring and logi
 | Framework | Next.js (App Router) |
 | Language | TypeScript 5 |
 | Styling | Tailwind CSS 4 + shadcn/ui + Radix UI |
+| Auth | Supabase Auth (email magic-link + Google) |
 | Data Table | @tanstack/react-table v8 |
 | Charts | Recharts |
 | Database | Supabase (PostgreSQL) |
-| Data Source | yahoo-finance2 (server-side) |
+| Data Source | yahoo-finance2 v3+ (server-side) |
 | Icons | lucide-react |
 | Deployment | Vercel |
 
@@ -59,10 +63,17 @@ cd quanticscreen
 npm install
 ```
 
-### 2. Set up Supabase (database)
+### 2. Set up Supabase (database + auth)
 
 1. Go to your [Supabase Dashboard](https://supabase.com/dashboard) and create a project (or use an existing one).
-2. Open the **SQL Editor** and paste the contents of `supabase/migrations/001_initial_schema.sql`. Run it.
+2. Open the **SQL Editor** and run the contents of:
+   - `supabase/migrations/001_initial_schema.sql` — core tables
+   - `supabase/migrations/002_user_watchlists.sql` — watchlist table
+3. Enable authentication providers:
+   - Go to **Authentication → Providers**
+   - Enable **Email** (magic link is on by default)
+   - Optionally enable **Google** (requires OAuth credentials)
+4. Set the site URL in **Authentication → URL Configuration** to `http://localhost:3000` (or your deployed URL).
 
 This creates the following tables and views:
 
@@ -75,6 +86,7 @@ This creates the following tables and views:
 | `price_history` | Historical price data (JSON) |
 | `metadata` | Key-value store for app state (e.g. last fetch time) |
 | `user_presets` | User-saved scoring configurations (with RLS) |
+| `user_watchlists` | Per-user pinned stocks with ordering (with RLS) |
 
 ---
 
@@ -99,9 +111,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-key-here
 # Server-side only — never expose to client
 SUPABASE_SERVICE_ROLE_KEY=your-secret-key-here
 
-# Password for the /admin panel
-ADMIN_PASSWORD=your-secure-admin-password
-
 # Secret for Vercel Cron job authentication (optional locally, required in production)
 CRON_SECRET=your-cron-secret-here
 ```
@@ -118,9 +127,9 @@ CRON_SECRET=your-cron-secret-here
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). You should see the home page with a hero search bar.
+Open [http://localhost:3000](http://localhost:3000). You should see the dashboard with a search bar.
 
-If your Supabase connection is configured correctly and you've run the migration, the app is fully functional. The screener table will be empty until you seed data (see below).
+If your Supabase connection is configured correctly and you've run both migrations, the app is fully functional. The screener table will be empty until you seed data.
 
 ---
 
@@ -150,27 +159,12 @@ That's it — no OAuth client IDs or redirect URLs needed.
 
 ## How to Seed Initial Data
 
-1. Navigate to [http://localhost:3000/admin](http://localhost:3000/admin)
-2. Enter your `ADMIN_PASSWORD` to authenticate
-3. Use **"Fetch New Stocks"** and enter comma-separated tickers: `AAPL, MSFT, GOOGL, AMZN, TSLA`
-4. The app fetches live data from Yahoo Finance, scores each stock, and populates the screener
+1. Sign in (email magic link or Google)
+2. On the dashboard, click the **"Seed Popular Tickers"** button in the sidebar
+3. This inserts 700+ ticker symbols into the `stocks` table
+4. Metrics will be fetched when you search individual tickers, or on the next cron run
 
-You can add as many tickers as you want. The default ticker list (`src/lib/tickers.ts`) contains 700+ tickers for bulk operations.
-
----
-
-## Admin Panel
-
-**Route:** `/admin`
-
-The admin panel is password-protected (using `ADMIN_PASSWORD`). It provides:
-
-- **Refresh Stale** — Re-fetch metrics for tickers whose data is older than the last market close
-- **Fetch New Stocks** — Add new tickers by comma-separated symbols
-- **Delete Tickers** — Remove tickers and all associated data
-- **Prune Old Metrics** — Clean up old metric_fetches entries, keeping only the latest per ticker
-
-All operations include cooldown enforcement to prevent accidental rapid-fire API calls.
+Alternatively, just search any ticker — if it doesn't exist in the database, it will be auto-fetched and inserted.
 
 ---
 
@@ -209,11 +203,8 @@ Set `CRON_SECRET` in your Vercel environment variables to secure this endpoint i
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the Publishable key from Supabase)
    - `SUPABASE_SERVICE_ROLE_KEY` (the Secret key from Supabase)
-   - `ADMIN_PASSWORD`
    - `CRON_SECRET`
 4. **Deploy** — the cron job will automatically run every 4 hours
-
-That's it. Your stock screener is live.
 
 ---
 
@@ -221,26 +212,26 @@ That's it. Your stock screener is live.
 
 ```
 src/
-├── middleware.ts               # Session refresh + route protection
-├── app/
-│   ├── page.tsx               # Home — hero search with mini-cards
-│   ├── login/page.tsx         # Email + password sign-in / sign-up
+├── app/                        # Next.js App Router pages
+│   ├── page.tsx               # Dashboard — search + watchlist sidebar
 │   ├── screener/page.tsx      # Stock screener with TanStack table
 │   ├── ticker/[symbol]/       # Stock detail page
 │   ├── builder/page.tsx       # Custom logic builder
 │   ├── presets/page.tsx       # Preset management
-│   ├── admin/page.tsx         # Admin panel
+│   ├── login/page.tsx         # Auth login page
 │   ├── api/
 │   │   ├── cron/route.ts      # Background refresh (Vercel Cron)
+│   │   ├── watchlist/route.ts # Watchlist CRUD API
 │   │   └── stocks/
 │   │       ├── search/        # Yahoo Finance search
-│   │       ├── fetch/         # Fetch & score single stock
+│   │       ├── fetch/         # Fetch & score single stock (auto-inserts)
 │   │       ├── process/       # Score all stocks (GET preset, POST custom)
-│   │       └── refresh/       # Admin actions
-│   └── auth/callback/         # Supabase auth callback (PKCE code exchange)
+│   │       └── seed/          # Seed popular tickers
+│   └── auth/callback/         # Supabase auth callback
 ├── components/
-│   ├── AuthProvider.tsx       # Auth context (user state, sign-out)
-│   ├── Navbar.tsx             # Navigation bar with auth state
+│   ├── Navbar.tsx             # Navigation bar with auth
+│   ├── AuthProvider.tsx       # Supabase auth context
+│   ├── WatchlistSidebar.tsx   # Pinned stocks sidebar + PinButton
 │   └── ui/                    # shadcn/ui primitives
 ├── lib/
 │   ├── supabase/
@@ -249,8 +240,10 @@ src/
 │   │   └── middleware.ts      # Middleware session helper
 │   ├── supabase.ts            # Legacy Supabase client (service role for DB ops)
 │   ├── processor.ts           # Scoring engine
-│   ├── yahoo.ts               # Yahoo Finance data fetcher
+│   ├── yahoo.ts               # Yahoo Finance data fetcher (v3+ API)
 │   ├── db.ts                  # Supabase database operations
+│   ├── supabase.ts            # Supabase service client
+│   ├── supabase-browser.ts    # Supabase browser client (SSR)
 │   ├── tickers.ts             # Default ticker list (700+)
 │   └── utils.ts               # Utility functions
 └── types/

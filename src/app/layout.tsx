@@ -5,9 +5,9 @@ import { AuthProvider } from '@/components/AuthProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'QuanticScreen - Stock Screener & Analysis',
+  title: 'QuanticScreen – Your Personal Stock Research Dashboard',
   description:
-    'A modern stock screening platform with custom scoring, flag analysis, and preset strategies. Better than Yahoo Finance.',
+    'A personal stock research dashboard with multi-factor scoring, smart flag analysis, preset strategies, and custom watchlists.',
 };
 
 export default function RootLayout({

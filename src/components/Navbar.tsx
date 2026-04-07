@@ -29,7 +29,6 @@ export function Navbar() {
   const pathname = usePathname();
   const { user, signOut, loading } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user, loading, signOut } = useAuth();
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-xl">

@@ -133,6 +133,30 @@ If your Supabase connection is configured correctly and you've run both migratio
 
 ---
 
+## Authentication
+
+QuanticScreen uses **email + password** authentication via Supabase Auth. There is no Google OAuth, magic links, or other social login — just classic email/password.
+
+### How it works
+
+- `/login` — Sign In / Create Account tabs with email + password fields
+- Protected routes (`/screener`, `/builder`, `/presets`, `/admin`) require authentication; unauthenticated users are redirected to `/login`
+- Public routes (`/`, `/ticker/[symbol]`) remain accessible without login
+- Session management uses `@supabase/ssr` with cookie-based sessions and Next.js middleware
+- The Navbar shows the logged-in user's email and a Sign Out button
+
+### One-time Supabase setup
+
+In your Supabase Dashboard → **Authentication → Providers**:
+
+1. **Enable** the **Email** provider (should be enabled by default)
+2. **Disable** Google and any other OAuth providers (if enabled)
+3. Optionally disable "Confirm email" under **Authentication → Settings** for faster local development (users can sign in immediately after sign-up)
+
+That's it — no OAuth client IDs or redirect URLs needed.
+
+---
+
 ## How to Seed Initial Data
 
 1. Sign in (email magic link or Google)
@@ -210,6 +234,11 @@ src/
 │   ├── WatchlistSidebar.tsx   # Pinned stocks sidebar + PinButton
 │   └── ui/                    # shadcn/ui primitives
 ├── lib/
+│   ├── supabase/
+│   │   ├── client.ts          # Browser Supabase client (@supabase/ssr)
+│   │   ├── server.ts          # Server Supabase client (@supabase/ssr)
+│   │   └── middleware.ts      # Middleware session helper
+│   ├── supabase.ts            # Legacy Supabase client (service role for DB ops)
 │   ├── processor.ts           # Scoring engine
 │   ├── yahoo.ts               # Yahoo Finance data fetcher (v3+ API)
 │   ├── db.ts                  # Supabase database operations

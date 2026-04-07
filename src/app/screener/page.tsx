@@ -17,7 +17,8 @@ import {
 import {
   ArrowUpDown,
   Download,
-  RefreshCw,
+  Search,
+  BarChart3 as BarChart3Icon,
   Filter,
   Loader2,
   ChevronLeft,
@@ -42,7 +43,8 @@ export default function ScreenerPage() {
   const router = useRouter();
   const [results, setResults] = useState<ProcessedResult[]>([]);
   const [sectors, setSectors] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [preset, setPreset] = useState('Overall');
   const [search, setSearch] = useState('');
   const [dataset, setDataset] = useState('All');
@@ -58,6 +60,7 @@ export default function ScreenerPage() {
 
   const fetchResults = useCallback(async () => {
     setLoading(true);
+    setHasSearched(true);
     try {
       const res = await fetch(`/api/stocks/process?preset=${preset}`);
       if (res.ok) {
@@ -71,10 +74,6 @@ export default function ScreenerPage() {
       setLoading(false);
     }
   }, [preset]);
-
-  useEffect(() => {
-    fetchResults();
-  }, [fetchResults]);
 
   const filteredResults = useMemo(() => {
     let r = [...results];
@@ -316,6 +315,10 @@ export default function ScreenerPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" onClick={fetchResults} disabled={loading}>
+            {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Search className="mr-1 h-3 w-3" />}
+            Search
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="mr-1 h-3 w-3" />
             Filters
@@ -327,10 +330,6 @@ export default function ScreenerPage() {
           <Button variant="outline" size="sm" onClick={exportCSV}>
             <Download className="mr-1 h-3 w-3" />
             CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={fetchResults} disabled={loading}>
-            {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
-            Refresh
           </Button>
         </div>
       </div>
@@ -456,7 +455,21 @@ export default function ScreenerPage() {
         )}
       </div>
 
-      {loading ? (
+      {!hasSearched ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <BarChart3Icon className="h-12 w-12 text-muted-foreground/30 mb-4" />
+          <p className="text-lg font-medium text-muted-foreground mb-2">
+            Ready to screen stocks
+          </p>
+          <p className="text-sm text-muted-foreground/70 mb-6 max-w-md">
+            Select a preset and filters above, then click Search to load scored results from your database.
+          </p>
+          <Button onClick={fetchResults} size="lg">
+            <Search className="mr-2 h-4 w-4" />
+            Search Stocks
+          </Button>
+        </div>
+      ) : loading ? (
         <div className="space-y-2">
           {Array.from({ length: 10 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />

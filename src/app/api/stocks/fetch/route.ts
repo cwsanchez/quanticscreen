@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { fetchStockMetrics, fetchPriceHistory } from '@/lib/yahoo';
 import { saveMetrics, getLatestMetrics, savePriceHistory, getPriceHistory } from '@/lib/db';
 import { processStock, PRESETS, DEFAULT_WEIGHTS, DEFAULT_METRICS } from '@/lib/processor';
+import { getServiceClient } from '@/lib/supabase';
 import type { StockMetrics, LogicConfig } from '@/types';
 
 export async function GET(request: NextRequest) {
@@ -16,11 +17,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Ticker required' }, { status: 400 });
   }
 
+  const upperTicker = ticker.toUpperCase();
+
   try {
     let metrics: StockMetrics | null = null;
 
     if (!forceRefresh) {
-      metrics = await getLatestMetrics(ticker.toUpperCase());
+      metrics = await getLatestMetrics(upperTicker);
       if (metrics) {
         const fetchTime = new Date(metrics.fetch_timestamp ?? '').getTime();
         const hoursSince = (Date.now() - fetchTime) / (1000 * 60 * 60);
@@ -31,10 +34,22 @@ export async function GET(request: NextRequest) {
     }
 
     if (!metrics) {
-      const fetched = await fetchStockMetrics(ticker.toUpperCase());
+      const fetched = await fetchStockMetrics(upperTicker);
       if (!fetched) {
         return NextResponse.json({ error: 'Failed to fetch metrics' }, { status: 404 });
       }
+
+      const sb = getServiceClient();
+      await sb.from('stocks').upsert(
+        {
+          ticker: upperTicker,
+          company_name: fetched['Company Name'] ?? 'N/A',
+          industry: fetched.Industry ?? 'N/A',
+          sector: fetched.Sector ?? 'N/A',
+        },
+        { onConflict: 'ticker' }
+      );
+
       await saveMetrics(fetched);
       metrics = fetched;
     }
@@ -42,11 +57,11 @@ export async function GET(request: NextRequest) {
     const logic: LogicConfig = PRESETS[preset] ?? PRESETS.Overall;
     const processed = processStock(metrics, DEFAULT_WEIGHTS, DEFAULT_METRICS, logic);
 
-    let history = await getPriceHistory(ticker.toUpperCase());
+    let history = await getPriceHistory(upperTicker);
     if (!history) {
-      history = await fetchPriceHistory(ticker.toUpperCase());
+      history = await fetchPriceHistory(upperTicker);
       if (history && history.length > 0) {
-        await savePriceHistory(ticker.toUpperCase(), history);
+        await savePriceHistory(upperTicker, history);
       }
     }
 

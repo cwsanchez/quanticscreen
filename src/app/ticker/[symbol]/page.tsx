@@ -27,6 +27,7 @@ import {
   DEFAULT_METRICS,
   NEGATIVE_FLAGS,
 } from '@/lib/processor';
+import { PinButton } from '@/components/WatchlistSidebar';
 import type { ProcessedResult, PriceHistoryPoint, StockMetrics } from '@/types';
 import {
   ResponsiveContainer,
@@ -292,6 +293,7 @@ export default function TickerPage({ params }: { params: Promise<{ symbol: strin
               <h1 className="text-2xl font-bold">{m.Ticker}</h1>
               <Badge variant="secondary">{processed.cap_category}</Badge>
               {m.Sector !== 'N/A' && <Badge variant="outline">{m.Sector}</Badge>}
+              <PinButton symbol={m.Ticker} size="sm" />
             </div>
             <p className="text-sm text-muted-foreground">{m['Company Name']}</p>
           </div>

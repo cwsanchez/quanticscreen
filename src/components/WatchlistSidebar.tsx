@@ -5,8 +5,25 @@ import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Pin, X, ChevronDown, ChevronUp, Loader2, Star } from 'lucide-react';
+import { Pin, X, ChevronDown, ChevronUp, Loader2, Star, Upload } from 'lucide-react';
 import type { PriceHistoryPoint } from '@/types';
+
+const LOCAL_PINS_KEY = 'qs_local_watchlist';
+
+function getLocalPins(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_PINS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function setLocalPins(pins: string[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(LOCAL_PINS_KEY, JSON.stringify(pins));
+}
 
 interface WatchlistItem {
   id: string;
@@ -49,6 +66,34 @@ function MiniSparkline({ data }: { data: PriceHistoryPoint[] }) {
   );
 }
 
+export function SyncPromptBanner() {
+  const { showSyncPrompt, syncLocalPinsToAccount, dismissPinSync } = useAuth();
+
+  if (!showSyncPrompt) return null;
+
+  return (
+    <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
+      <div className="flex items-start gap-2">
+        <Upload className="mt-0.5 h-4 w-4 text-primary shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">Sync local pins?</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            You have locally pinned stocks. Sync them to your account?
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" variant="default" className="h-7 text-xs" onClick={syncLocalPinsToAccount}>
+              Sync Now
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={dismissPinSync}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function WatchlistSidebar({
   onSelectStock,
   selectedSymbol,
@@ -57,39 +102,35 @@ export function WatchlistSidebar({
   selectedSymbol?: string;
 }) {
   const { user } = useAuth();
-  const [items, setItems] = useState<WatchlistItem[]>([]);
+  const [dbItems, setDbItems] = useState<WatchlistItem[]>([]);
+  const [localPins, setLocalPinsState] = useState<string[]>([]);
   const [stockData, setStockData] = useState<Record<string, WatchlistStockData>>({});
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
 
+  const symbols = user
+    ? dbItems.map((i) => i.stock_symbol)
+    : localPins;
+
   const fetchWatchlist = useCallback(async () => {
-    if (!user) { setItems([]); setLoading(false); return; }
+    if (!user) {
+      setLocalPinsState(getLocalPins());
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch('/api/watchlist');
       if (res.ok) {
         const data = await res.json();
-        setItems(data);
+        setDbItems(data);
       }
     } catch { /* ignore */ }
     setLoading(false);
   }, [user]);
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!user) { if (!cancelled) { setItems([]); setLoading(false); } return; }
-      try {
-        const res = await fetch('/api/watchlist');
-        if (res.ok && !cancelled) {
-          const data = await res.json();
-          setItems(data);
-        }
-      } catch { /* ignore */ }
-      if (!cancelled) setLoading(false);
-    };
-    load();
-    return () => { cancelled = true; };
-  }, [user]);
+    fetchWatchlist();
+  }, [fetchWatchlist]);
 
   useEffect(() => {
     if (!user) return;
@@ -108,10 +149,10 @@ export function WatchlistSidebar({
 
   useEffect(() => {
     const fetchAllData = async () => {
-      for (const item of items) {
-        if (stockData[item.stock_symbol]) continue;
+      for (const sym of symbols) {
+        if (stockData[sym]) continue;
         try {
-          const res = await fetch(`/api/stocks/fetch?ticker=${item.stock_symbol}`);
+          const res = await fetch(`/api/stocks/fetch?ticker=${sym}`);
           if (res.ok) {
             const data = await res.json();
             const m = data.processed?.metrics;
@@ -121,9 +162,9 @@ export function WatchlistSidebar({
               const pct = high > 0 ? ((price - high) / high) * 100 : 0;
               setStockData((prev) => ({
                 ...prev,
-                [item.stock_symbol]: {
-                  symbol: item.stock_symbol,
-                  companyName: m['Company Name'] ?? item.stock_symbol,
+                [sym]: {
+                  symbol: sym,
+                  companyName: m['Company Name'] ?? sym,
                   price,
                   change: 0,
                   changePercent: pct,
@@ -135,12 +176,19 @@ export function WatchlistSidebar({
         } catch { /* ignore */ }
       }
     };
-    if (items.length > 0) fetchAllData();
-  }, [items, stockData]);
+    if (symbols.length > 0) fetchAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbols.join(',')]);
 
   const handleRemove = async (symbol: string) => {
-    await fetch(`/api/watchlist?symbol=${symbol}`, { method: 'DELETE' });
-    setItems((prev) => prev.filter((i) => i.stock_symbol !== symbol));
+    if (user) {
+      await fetch(`/api/watchlist?symbol=${symbol}`, { method: 'DELETE' });
+      setDbItems((prev) => prev.filter((i) => i.stock_symbol !== symbol));
+    } else {
+      const updated = localPins.filter((s) => s !== symbol);
+      setLocalPins(updated);
+      setLocalPinsState(updated);
+    }
     setStockData((prev) => {
       const next = { ...prev };
       delete next[symbol];
@@ -148,7 +196,19 @@ export function WatchlistSidebar({
     });
   };
 
-  if (!user) return null;
+  if (symbols.length === 0 && !loading) {
+    return (
+      <div className="w-full">
+        <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground mb-2">
+          <Star className="h-4 w-4 text-primary" />
+          My Watchlist
+        </div>
+        <p className="text-xs text-muted-foreground py-4 text-center">
+          Pin stocks to build your watchlist
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
@@ -161,7 +221,10 @@ export function WatchlistSidebar({
           My Watchlist
           {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
         </button>
-        <span className="text-xs text-muted-foreground">{items.length} stocks</span>
+        <span className="text-xs text-muted-foreground">
+          {symbols.length} stocks
+          {!user && <span className="ml-1 opacity-60">(local)</span>}
+        </span>
       </div>
 
       {!collapsed && (
@@ -170,25 +233,21 @@ export function WatchlistSidebar({
             Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-14 w-full rounded-lg" />
             ))
-          ) : items.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-4 text-center">
-              Pin stocks to build your watchlist
-            </p>
           ) : (
-            items.map((item) => {
-              const sd = stockData[item.stock_symbol];
-              const isSelected = selectedSymbol === item.stock_symbol;
+            symbols.map((sym) => {
+              const sd = stockData[sym];
+              const isSelected = selectedSymbol === sym;
               return (
                 <button
-                  key={item.id}
-                  onClick={() => onSelectStock(item.stock_symbol)}
+                  key={sym}
+                  onClick={() => onSelectStock(sym)}
                   className={`group flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all hover:border-primary/30 hover:bg-accent/50 ${
                     isSelected ? 'border-primary/50 bg-primary/5' : 'border-border/30'
                   }`}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">{item.stock_symbol}</span>
+                      <span className="text-sm font-semibold">{sym}</span>
                       {sd ? (
                         <span className="text-sm font-medium tabular-nums">
                           ${sd.price.toFixed(2)}
@@ -205,7 +264,7 @@ export function WatchlistSidebar({
                     </div>
                   </div>
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleRemove(item.stock_symbol); }}
+                    onClick={(e) => { e.stopPropagation(); handleRemove(sym); }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 hover:text-destructive"
                   >
                     <X className="h-3 w-3" />
@@ -228,35 +287,53 @@ export function PinButton({
   size?: 'sm' | 'icon';
 }) {
   const { user } = useAuth();
-  const [isPinned, setIsPinned] = useState(false);
+  const [dbPinned, setDbPinned] = useState(false);
+  const [localToggle, setLocalToggle] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
-    fetch('/api/watchlist')
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setIsPinned(data.some((i: WatchlistItem) => i.stock_symbol === symbol));
-        }
-      })
-      .catch(() => {});
+    let cancelled = false;
+    if (user) {
+      fetch('/api/watchlist')
+        .then((r) => r.json())
+        .then((data) => {
+          if (!cancelled && Array.isArray(data)) {
+            setDbPinned(data.some((i: WatchlistItem) => i.stock_symbol === symbol));
+          }
+        })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
   }, [user, symbol]);
 
-  if (!user) return null;
+  const isPinned = user ? dbPinned : (() => {
+    void localToggle;
+    return getLocalPins().includes(symbol);
+  })();
 
   const toggle = async () => {
     setLoading(true);
-    if (isPinned) {
-      await fetch(`/api/watchlist?symbol=${symbol}`, { method: 'DELETE' });
-      setIsPinned(false);
+    if (user) {
+      if (dbPinned) {
+        await fetch(`/api/watchlist?symbol=${symbol}`, { method: 'DELETE' });
+        setDbPinned(false);
+      } else {
+        await fetch('/api/watchlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol }),
+        });
+        setDbPinned(true);
+      }
     } else {
-      await fetch('/api/watchlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol }),
-      });
-      setIsPinned(true);
+      const pins = getLocalPins();
+      if (pins.includes(symbol)) {
+        setLocalPins(pins.filter((s) => s !== symbol));
+      } else {
+        pins.push(symbol);
+        setLocalPins(pins);
+      }
+      setLocalToggle((v) => v + 1);
     }
     setLoading(false);
   };

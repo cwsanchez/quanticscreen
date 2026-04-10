@@ -11,19 +11,20 @@ Your personal stock research dashboard — built with Next.js, Supabase, and Yah
 
 ## Overview
 
-QuanticScreen is a personal stock research dashboard that combines real-time Yahoo Finance data with a proprietary multi-factor scoring engine. Search, score, and analyze stocks with depth and flexibility. Sign in to build a personal watchlist and pin your favorite tickers.
+QuanticScreen is a personal stock research dashboard that combines real-time Yahoo Finance data with a proprietary multi-factor scoring engine. Search, score, and analyze stocks with depth and flexibility. All pages are fully accessible without login — sign in only to persist your watchlist to the cloud.
 
 **Key capabilities:**
 
 - **Dashboard** — Search any ticker with type-ahead, view mini-cards with key metrics + sparkline charts, and pin stocks to your watchlist
-- **Personal Watchlist** — Sidebar showing your pinned stocks with live pricing, sparklines, and one-click access to full reports (requires sign-in)
+- **Personal Watchlist** — Sidebar showing your pinned stocks with live pricing, sparklines, and one-click access to full reports (works for guests via localStorage; sign in to save permanently)
+- **Professional Stock Detail** — Sticky header with live price, interactive chart with time-range selectors, key-stats bar, two-column layout with factor scores, ratios, growth metrics, flags, and rankings
 - **Multi-Factor Scoring** — Weighted scoring across 8+ fundamental metrics with customizable normalizers
 - **8 Analytical Flags** — Undervalued, Strong Balance Sheet, Quality Moat, GARP, High-Risk Growth, Value Trap, Momentum Building, Debt Burden
 - **5 Built-in Presets** — Overall, Value, Growth, Momentum, Quality — each with tuned flag boost weights
 - **Advanced Screener** — TanStack Table v8 with sorting, filtering, column visibility, pagination, and CSV export; loads on demand via "Search" button
 - **Stock Detail Pages** — Full metric breakdown, price charts (Recharts), 52-week range bar, factor boost cards, preset rankings
 - **Custom Logic Builder** — Build your own scoring strategy: select metrics, adjust weights, configure flag boosts, preview results
-- **Auth** — Supabase Auth with email magic-link and Google provider; watchlist and pin features require sign-in
+- **Auth** — Supabase Auth with email + password (Sign In / Create Account); no OAuth or magic links
 - **Auto-Insert Tickers** — Searching a ticker that doesn't exist in the database automatically fetches and inserts it
 - **Seed Popular Tickers** — One-click button to seed the database with 700+ popular ticker symbols
 - **Background Refresh** — Vercel Cron job for automated metric updates with market-close-aware scheduling
@@ -38,7 +39,7 @@ QuanticScreen is a personal stock research dashboard that combines real-time Yah
 | Framework | Next.js (App Router) |
 | Language | TypeScript 5 |
 | Styling | Tailwind CSS 4 + shadcn/ui + Radix UI |
-| Auth | Supabase Auth (email magic-link + Google) |
+| Auth | Supabase Auth (email + password) |
 | Data Table | @tanstack/react-table v8 |
 | Charts | Recharts |
 | Database | Supabase (PostgreSQL) |
@@ -71,8 +72,8 @@ npm install
    - `supabase/migrations/002_user_watchlists.sql` — watchlist table
 3. Enable authentication providers:
    - Go to **Authentication → Providers**
-   - Enable **Email** (magic link is on by default)
-   - Optionally enable **Google** (requires OAuth credentials)
+   - Enable **Email** provider (enabled by default)
+   - Disable Google and any other OAuth providers
 4. Set the site URL in **Authentication → URL Configuration** to `http://localhost:3000` (or your deployed URL).
 
 This creates the following tables and views:
@@ -133,17 +134,36 @@ If your Supabase connection is configured correctly and you've run both migratio
 
 ---
 
-## Authentication
+## Authentication & Access Control
 
-QuanticScreen uses **email + password** authentication via Supabase Auth. There is no Google OAuth, magic links, or other social login — just classic email/password.
+QuanticScreen uses **email + password** authentication via Supabase Auth. There is no Google OAuth, magic links, or other social login.
 
-### How it works
+### Public vs. Protected
 
-- `/login` — Sign In / Create Account tabs with email + password fields
-- Protected routes (`/screener`, `/builder`, `/presets`, `/admin`) require authentication; unauthenticated users are redirected to `/login`
-- Public routes (`/`, `/ticker/[symbol]`) remain accessible without login
-- Session management uses `@supabase/ssr` with cookie-based sessions and Next.js middleware
-- The Navbar shows the logged-in user's email and a Sign Out button
+All pages are **public** and accessible without login:
+
+| Route | Access |
+|-------|--------|
+| `/` (Dashboard) | Public |
+| `/ticker/[symbol]` | Public |
+| `/screener` | Public |
+| `/builder` | Public |
+| `/presets` | Public |
+| `/login` | Public |
+
+### What requires login
+
+Only **persistent watchlist storage** requires authentication:
+
+- **Guest users** can pin/unpin stocks using localStorage — the UI is identical to logged-in users
+- **Logged-in users** have their watchlist saved to Supabase (survives across devices and browsers)
+- On login, if there are locally pinned stocks, the app offers to **sync them to your account**
+
+### Login page
+
+- `/login` has two tabs: **Sign In** and **Create Account**
+- Both use email + password fields
+- No OAuth, no magic links, no social login
 
 ### One-time Supabase setup
 
@@ -151,18 +171,15 @@ In your Supabase Dashboard → **Authentication → Providers**:
 
 1. **Enable** the **Email** provider (should be enabled by default)
 2. **Disable** Google and any other OAuth providers (if enabled)
-3. Optionally disable "Confirm email" under **Authentication → Settings** for faster local development (users can sign in immediately after sign-up)
-
-That's it — no OAuth client IDs or redirect URLs needed.
+3. Optionally disable "Confirm email" under **Authentication → Settings** for faster local development
 
 ---
 
 ## How to Seed Initial Data
 
-1. Sign in (email magic link or Google)
-2. On the dashboard, click the **"Seed Popular Tickers"** button in the sidebar
-3. This inserts 700+ ticker symbols into the `stocks` table
-4. Metrics will be fetched when you search individual tickers, or on the next cron run
+1. On the dashboard, click the **"Seed Popular Tickers"** button in the sidebar
+2. This inserts 700+ ticker symbols into the `stocks` table
+3. Metrics will be fetched when you search individual tickers, or on the next cron run
 
 Alternatively, just search any ticker — if it doesn't exist in the database, it will be auto-fetched and inserted.
 
@@ -218,7 +235,7 @@ src/
 │   ├── ticker/[symbol]/       # Stock detail page
 │   ├── builder/page.tsx       # Custom logic builder
 │   ├── presets/page.tsx       # Preset management
-│   ├── login/page.tsx         # Auth login page
+│   ├── login/page.tsx         # Auth login page (email + password)
 │   ├── api/
 │   │   ├── cron/route.ts      # Background refresh (Vercel Cron)
 │   │   ├── watchlist/route.ts # Watchlist CRUD API
@@ -230,19 +247,19 @@ src/
 │   └── auth/callback/         # Supabase auth callback
 ├── components/
 │   ├── Navbar.tsx             # Navigation bar with auth
-│   ├── AuthProvider.tsx       # Supabase auth context
-│   ├── WatchlistSidebar.tsx   # Pinned stocks sidebar + PinButton
+│   ├── AuthProvider.tsx       # Supabase auth context (email + password)
+│   ├── WatchlistSidebar.tsx   # Pinned stocks sidebar + PinButton (localStorage + Supabase)
+│   ├── StockDetail.tsx        # Professional stock detail component
 │   └── ui/                    # shadcn/ui primitives
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts          # Browser Supabase client (@supabase/ssr)
 │   │   ├── server.ts          # Server Supabase client (@supabase/ssr)
-│   │   └── middleware.ts      # Middleware session helper
+│   │   └── middleware.ts      # Middleware session helper (no route protection)
 │   ├── supabase.ts            # Legacy Supabase client (service role for DB ops)
 │   ├── processor.ts           # Scoring engine
 │   ├── yahoo.ts               # Yahoo Finance data fetcher (v3+ API)
 │   ├── db.ts                  # Supabase database operations
-│   ├── supabase.ts            # Supabase service client
 │   ├── supabase-browser.ts    # Supabase browser client (SSR)
 │   ├── tickers.ts             # Default ticker list (700+)
 │   └── utils.ts               # Utility functions

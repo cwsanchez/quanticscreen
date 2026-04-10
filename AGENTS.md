@@ -4,7 +4,7 @@
 
 ### Overview
 
-QuanticScreen is a modern Next.js (App Router) stock screening web app backed by Supabase (PostgreSQL + Auth) and Yahoo Finance data. See `README.md` for full architecture and usage details.
+QuanticScreen is a modern Next.js (App Router) stock screening web app backed by Supabase (PostgreSQL) and Yahoo Finance data. No authentication required — fully public app. See `README.md` for full architecture and usage details.
 
 ### Running the app
 
@@ -13,9 +13,8 @@ npm install
 npm run dev
 ```
 
-The dev server starts on `http://localhost:3000`. The app requires a Supabase project with both migration files applied:
+The dev server starts on `http://localhost:3000`. The app requires a Supabase project with the migration file applied:
 - `supabase/migrations/001_initial_schema.sql`
-- `supabase/migrations/002_user_watchlists.sql`
 
 ### Environment variables
 
@@ -39,8 +38,9 @@ No test suite is configured. Use `npx tsc --noEmit` for type checking.
 - The app uses `yahoo-finance2` v3+ which requires instantiation: `const yf = new YahooFinance()`. The old static API is no longer supported.
 - Yahoo Finance may rate-limit or return errors — this is expected and non-blocking.
 - The cron handler (`/api/cron`) includes randomized sleep between fetches to avoid rate limits.
-- Auth uses Supabase Auth with email magic-link and optional Google provider. Configure providers in the Supabase dashboard.
+- The cron handler also gradually seeds S&P 500 tickers (up to 50 per run) from the hardcoded list in `src/lib/tickers.ts`.
+- No authentication is used. All pages are fully public with no login or sign-up.
+- Watchlist uses 100% localStorage — no server-side watchlist storage.
 - `vercel.json` configures a cron schedule (`0 */4 * * *`) that only runs when deployed to Vercel.
 - Hot reload works normally in dev mode (`next dev`).
 - Searching a ticker that doesn't exist in the database auto-fetches and inserts it.
-- The "Seed Popular Tickers" button inserts 700+ ticker symbols; metrics are fetched lazily on search or via cron.

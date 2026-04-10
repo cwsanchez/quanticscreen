@@ -9,7 +9,6 @@ import {
   Zap,
   ArrowRight,
   Loader2,
-  Database,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -17,8 +16,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatLarge, getFloat } from '@/lib/processor';
-import { WatchlistSidebar, PinButton, SyncPromptBanner } from '@/components/WatchlistSidebar';
-import { toast } from 'sonner';
+import { WatchlistSidebar, PinButton } from '@/components/WatchlistSidebar';
 import type { ProcessedResult, PriceHistoryPoint } from '@/types';
 
 interface SearchResult {
@@ -176,7 +174,6 @@ export default function HomePage() {
   } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [seeding, setSeeding] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -221,20 +218,6 @@ export default function HomePage() {
     }
   };
 
-  const handleSeedTickers = async () => {
-    setSeeding(true);
-    try {
-      const res = await fetch('/api/stocks/seed', { method: 'POST' });
-      const data = await res.json();
-      if (data.error) toast.error(data.error);
-      else toast.success(data.message);
-    } catch {
-      toast.error('Failed to seed tickers');
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -249,27 +232,10 @@ export default function HomePage() {
     <div className="flex flex-col lg:flex-row gap-6">
       <aside className="w-full lg:w-72 shrink-0 order-2 lg:order-1">
         <div className="lg:sticky lg:top-20">
-          <SyncPromptBanner />
           <WatchlistSidebar
             onSelectStock={handleSelect}
             selectedSymbol={selectedStock?.processed.metrics.Ticker}
           />
-          <div className="mt-4">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full text-xs"
-              onClick={handleSeedTickers}
-              disabled={seeding}
-            >
-              {seeding ? (
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              ) : (
-                <Database className="mr-1 h-3 w-3" />
-              )}
-              Seed Popular Tickers
-            </Button>
-          </div>
         </div>
       </aside>
 

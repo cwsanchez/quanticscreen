@@ -5,8 +5,13 @@ export const dynamic = 'force-dynamic';
 import { fetchStockMetrics } from '@/lib/yahoo';
 import { saveMetrics, getStaleTickers, getLatestMetrics, pruneOldMetrics, getMetadata, setMetadata } from '@/lib/db';
 import { sleep, randomInt } from '@/lib/utils';
+import { getServiceClient } from '@/lib/supabase';
+import { DEFAULT_TICKERS } from '@/lib/tickers';
 
 export const maxDuration = 300;
+
+const SEED_BATCH_SIZE = 50;
+const FETCH_CHUNK_SIZE = 30;
 
 function getLastCloseDate(): Date {
   const now = new Date();
@@ -18,6 +23,29 @@ function getLastCloseDate(): Date {
   return et;
 }
 
+async function seedMissingTickers(): Promise<number> {
+  const sb = getServiceClient();
+  const { data: existing } = await sb.from('stocks').select('ticker');
+  const existingSet = new Set(existing?.map((s) => s.ticker) ?? []);
+
+  const missing = DEFAULT_TICKERS.filter((t) => !existingSet.has(t));
+  if (missing.length === 0) return 0;
+
+  const batch = missing.slice(0, SEED_BATCH_SIZE).map((ticker) => ({
+    ticker,
+    company_name: 'N/A',
+    industry: 'N/A',
+    sector: 'N/A',
+  }));
+
+  const { error } = await sb.from('stocks').upsert(batch, { onConflict: 'ticker' });
+  if (error) {
+    console.error('Seed batch error:', error);
+    return 0;
+  }
+  return batch.length;
+}
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
@@ -27,6 +55,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const seeded = await seedMissingTickers();
+
     const lastFetchStr = await getMetadata('last_fetch_time');
     const lastFetch = lastFetchStr ? new Date(lastFetchStr) : null;
 
@@ -35,7 +65,11 @@ export async function GET(request: NextRequest) {
     todayMidnight.setHours(0, 0, 0, 0);
 
     if (lastFetch && lastFetch >= todayMidnight) {
-      return NextResponse.json({ message: 'Already fetched today.', fetched: 0 });
+      return NextResponse.json({
+        message: 'Already fetched today.',
+        fetched: 0,
+        seeded,
+      });
     }
 
     const staleTickers = await getStaleTickers();
@@ -56,13 +90,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (toFetch.length === 0) {
-      return NextResponse.json({ message: 'No tickers to fetch.', fetched: 0 });
+      return NextResponse.json({
+        message: 'No tickers to fetch.',
+        fetched: 0,
+        seeded,
+      });
     }
 
-    const chunkSize = 30;
     let fetched = 0;
 
-    for (let i = 0; i < Math.min(toFetch.length, chunkSize); i++) {
+    for (let i = 0; i < Math.min(toFetch.length, FETCH_CHUNK_SIZE); i++) {
       const { ticker } = toFetch[i];
       try {
         const metrics = await fetchStockMetrics(ticker);
@@ -80,9 +117,10 @@ export async function GET(request: NextRequest) {
     await setMetadata('last_fetch_time', new Date().toISOString());
 
     return NextResponse.json({
-      message: `Fetched ${fetched}/${toFetch.length} tickers.`,
+      message: `Fetched ${fetched}/${toFetch.length} tickers. Seeded ${seeded} new tickers.`,
       fetched,
       total: toFetch.length,
+      seeded,
     });
   } catch (err) {
     console.error('Cron error:', err);

@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '@/components/AuthProvider';
-import { createClient } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Pin, X, ChevronDown, ChevronUp, Loader2, Star, Upload } from 'lucide-react';
+import { Pin, X, ChevronDown, ChevronUp, Loader2, Star } from 'lucide-react';
 import type { PriceHistoryPoint } from '@/types';
 
 const LOCAL_PINS_KEY = 'qs_local_watchlist';
@@ -23,13 +21,7 @@ function getLocalPins(): string[] {
 function setLocalPins(pins: string[]) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(LOCAL_PINS_KEY, JSON.stringify(pins));
-}
-
-interface WatchlistItem {
-  id: string;
-  stock_symbol: string;
-  sort_order: number;
-  added_at: string;
+  window.dispatchEvent(new Event('watchlist-update'));
 }
 
 interface WatchlistStockData {
@@ -66,34 +58,6 @@ function MiniSparkline({ data }: { data: PriceHistoryPoint[] }) {
   );
 }
 
-export function SyncPromptBanner() {
-  const { showSyncPrompt, syncLocalPinsToAccount, dismissPinSync } = useAuth();
-
-  if (!showSyncPrompt) return null;
-
-  return (
-    <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
-      <div className="flex items-start gap-2">
-        <Upload className="mt-0.5 h-4 w-4 text-primary shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">Sync local pins?</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            You have locally pinned stocks. Sync them to your account?
-          </p>
-          <div className="mt-2 flex gap-2">
-            <Button size="sm" variant="default" className="h-7 text-xs" onClick={syncLocalPinsToAccount}>
-              Sync Now
-            </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={dismissPinSync}>
-              Dismiss
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function WatchlistSidebar({
   onSelectStock,
   selectedSymbol,
@@ -101,51 +65,24 @@ export function WatchlistSidebar({
   onSelectStock: (symbol: string) => void;
   selectedSymbol?: string;
 }) {
-  const { user } = useAuth();
-  const [dbItems, setDbItems] = useState<WatchlistItem[]>([]);
   const [localPins, setLocalPinsState] = useState<string[]>([]);
   const [stockData, setStockData] = useState<Record<string, WatchlistStockData>>({});
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
 
-  const symbols = user
-    ? dbItems.map((i) => i.stock_symbol)
-    : localPins;
+  const symbols = localPins;
 
-  const fetchWatchlist = useCallback(async () => {
-    if (!user) {
-      setLocalPinsState(getLocalPins());
-      setLoading(false);
-      return;
-    }
-    try {
-      const res = await fetch('/api/watchlist');
-      if (res.ok) {
-        const data = await res.json();
-        setDbItems(data);
-      }
-    } catch { /* ignore */ }
+  const fetchWatchlist = useCallback(() => {
+    setLocalPinsState(getLocalPins());
     setLoading(false);
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     fetchWatchlist();
+    const handler = () => fetchWatchlist();
+    window.addEventListener('watchlist-update', handler);
+    return () => window.removeEventListener('watchlist-update', handler);
   }, [fetchWatchlist]);
-
-  useEffect(() => {
-    if (!user) return;
-    const supabase = createClient();
-    const channel = supabase
-      .channel('watchlist-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'user_watchlists', filter: `user_id=eq.${user.id}` },
-        () => { fetchWatchlist(); }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user, fetchWatchlist]);
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -180,15 +117,10 @@ export function WatchlistSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbols.join(',')]);
 
-  const handleRemove = async (symbol: string) => {
-    if (user) {
-      await fetch(`/api/watchlist?symbol=${symbol}`, { method: 'DELETE' });
-      setDbItems((prev) => prev.filter((i) => i.stock_symbol !== symbol));
-    } else {
-      const updated = localPins.filter((s) => s !== symbol);
-      setLocalPins(updated);
-      setLocalPinsState(updated);
-    }
+  const handleRemove = (symbol: string) => {
+    const updated = localPins.filter((s) => s !== symbol);
+    setLocalPins(updated);
+    setLocalPinsState(updated);
     setStockData((prev) => {
       const next = { ...prev };
       delete next[symbol];
@@ -205,6 +137,9 @@ export function WatchlistSidebar({
         </div>
         <p className="text-xs text-muted-foreground py-4 text-center">
           Pin stocks to build your watchlist
+        </p>
+        <p className="text-[10px] text-muted-foreground/60 text-center">
+          Pins are saved in your browser
         </p>
       </div>
     );
@@ -223,7 +158,6 @@ export function WatchlistSidebar({
         </button>
         <span className="text-xs text-muted-foreground">
           {symbols.length} stocks
-          {!user && <span className="ml-1 opacity-60">(local)</span>}
         </span>
       </div>
 
@@ -286,55 +220,30 @@ export function PinButton({
   symbol: string;
   size?: 'sm' | 'icon';
 }) {
-  const { user } = useAuth();
-  const [dbPinned, setDbPinned] = useState(false);
   const [localToggle, setLocalToggle] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    if (user) {
-      fetch('/api/watchlist')
-        .then((r) => r.json())
-        .then((data) => {
-          if (!cancelled && Array.isArray(data)) {
-            setDbPinned(data.some((i: WatchlistItem) => i.stock_symbol === symbol));
-          }
-        })
-        .catch(() => {});
-    }
-    return () => { cancelled = true; };
-  }, [user, symbol]);
+    const handler = () => setLocalToggle((v) => v + 1);
+    window.addEventListener('watchlist-update', handler);
+    return () => window.removeEventListener('watchlist-update', handler);
+  }, []);
 
-  const isPinned = user ? dbPinned : (() => {
+  const isPinned = (() => {
     void localToggle;
     return getLocalPins().includes(symbol);
   })();
 
-  const toggle = async () => {
+  const toggle = () => {
     setLoading(true);
-    if (user) {
-      if (dbPinned) {
-        await fetch(`/api/watchlist?symbol=${symbol}`, { method: 'DELETE' });
-        setDbPinned(false);
-      } else {
-        await fetch('/api/watchlist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol }),
-        });
-        setDbPinned(true);
-      }
+    const pins = getLocalPins();
+    if (pins.includes(symbol)) {
+      setLocalPins(pins.filter((s) => s !== symbol));
     } else {
-      const pins = getLocalPins();
-      if (pins.includes(symbol)) {
-        setLocalPins(pins.filter((s) => s !== symbol));
-      } else {
-        pins.push(symbol);
-        setLocalPins(pins);
-      }
-      setLocalToggle((v) => v + 1);
+      pins.push(symbol);
+      setLocalPins(pins);
     }
+    setLocalToggle((v) => v + 1);
     setLoading(false);
   };
 

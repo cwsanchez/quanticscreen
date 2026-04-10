@@ -17,8 +17,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatLarge, getFloat } from '@/lib/processor';
-import { WatchlistSidebar, PinButton } from '@/components/WatchlistSidebar';
-import { useAuth } from '@/components/AuthProvider';
+import { WatchlistSidebar, PinButton, SyncPromptBanner } from '@/components/WatchlistSidebar';
 import { toast } from 'sonner';
 import type { ProcessedResult, PriceHistoryPoint } from '@/types';
 
@@ -168,7 +167,6 @@ function StockCard({
 
 export default function HomePage() {
   const router = useRouter();
-  const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -249,34 +247,31 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
-      {user && (
-        <aside className="w-full lg:w-72 shrink-0 order-2 lg:order-1">
-          <div className="lg:sticky lg:top-20">
-            <WatchlistSidebar
-              onSelectStock={handleSelect}
-              selectedSymbol={selectedStock?.processed.metrics.Ticker}
-            />
-            {user && (
-              <div className="mt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full text-xs"
-                  onClick={handleSeedTickers}
-                  disabled={seeding}
-                >
-                  {seeding ? (
-                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                  ) : (
-                    <Database className="mr-1 h-3 w-3" />
-                  )}
-                  Seed Popular Tickers
-                </Button>
-              </div>
-            )}
+      <aside className="w-full lg:w-72 shrink-0 order-2 lg:order-1">
+        <div className="lg:sticky lg:top-20">
+          <SyncPromptBanner />
+          <WatchlistSidebar
+            onSelectStock={handleSelect}
+            selectedSymbol={selectedStock?.processed.metrics.Ticker}
+          />
+          <div className="mt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs"
+              onClick={handleSeedTickers}
+              disabled={seeding}
+            >
+              {seeding ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <Database className="mr-1 h-3 w-3" />
+              )}
+              Seed Popular Tickers
+            </Button>
           </div>
-        </aside>
-      )}
+        </div>
+      </aside>
 
       <div className="flex-1 flex flex-col items-center order-1 lg:order-2">
         <div className="mt-4 flex flex-col items-center text-center sm:mt-8">

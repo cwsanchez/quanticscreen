@@ -3,15 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 import { fetchStockMetrics } from '@/lib/yahoo';
-import { saveMetrics, getStaleTickers, getLatestMetrics, pruneOldMetrics, getMetadata, setMetadata } from '@/lib/db';
+import { saveMetrics, getStaleTickers, getLatestMetrics, pruneOldMetrics, setMetadata } from '@/lib/db';
 import { sleep, randomInt } from '@/lib/utils';
 import { getServiceClient } from '@/lib/supabase';
 import { DEFAULT_TICKERS } from '@/lib/tickers';
 
 export const maxDuration = 300;
 
-const SEED_BATCH_SIZE = 50;
-const FETCH_CHUNK_SIZE = 30;
+const SEED_BATCH_SIZE = 100;
+const FETCH_CHUNK_SIZE = 50;
+const AI_REVIEW_BATCH_SIZE = 10;
 
 function getLastCloseDate(): Date {
   const now = new Date();
@@ -46,6 +47,49 @@ async function seedMissingTickers(): Promise<number> {
   return batch.length;
 }
 
+async function generateAiReviews(): Promise<number> {
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) return 0;
+
+  const sb = getServiceClient();
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: recentReviews } = await sb
+    .from('ai_reviews')
+    .select('ticker')
+    .gte('generated_at', weekAgo);
+  const reviewedSet = new Set(recentReviews?.map((r) => r.ticker) ?? []);
+
+  const { data: topStocks } = await sb
+    .from('stocks')
+    .select('ticker')
+    .order('ticker');
+
+  if (!topStocks) return 0;
+
+  const needsReview = topStocks
+    .map((s) => s.ticker)
+    .filter((t) => !reviewedSet.has(t))
+    .slice(0, AI_REVIEW_BATCH_SIZE);
+
+  if (needsReview.length === 0) return 0;
+
+  let generated = 0;
+  for (const ticker of needsReview) {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL ? '' : 'http://localhost:3000'}/api/ai/review/${ticker}`, {
+        method: 'GET',
+        headers: { 'x-internal-cron': 'true' },
+      });
+      if (res.ok) generated++;
+    } catch (e) {
+      console.error(`AI review generation error for ${ticker}:`, e);
+    }
+    await sleep(randomInt(2000, 5000));
+  }
+  return generated;
+}
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
@@ -56,21 +100,6 @@ export async function GET(request: NextRequest) {
 
   try {
     const seeded = await seedMissingTickers();
-
-    const lastFetchStr = await getMetadata('last_fetch_time');
-    const lastFetch = lastFetchStr ? new Date(lastFetchStr) : null;
-
-    const now = new Date();
-    const todayMidnight = new Date(now);
-    todayMidnight.setHours(0, 0, 0, 0);
-
-    if (lastFetch && lastFetch >= todayMidnight) {
-      return NextResponse.json({
-        message: 'Already fetched today.',
-        fetched: 0,
-        seeded,
-      });
-    }
 
     const staleTickers = await getStaleTickers();
     const lastCloseDate = getLastCloseDate();
@@ -89,38 +118,47 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (toFetch.length === 0) {
-      return NextResponse.json({
-        message: 'No tickers to fetch.',
-        fetched: 0,
-        seeded,
-      });
-    }
-
     let fetched = 0;
 
-    for (let i = 0; i < Math.min(toFetch.length, FETCH_CHUNK_SIZE); i++) {
-      const { ticker } = toFetch[i];
-      try {
-        const metrics = await fetchStockMetrics(ticker);
-        if (metrics) {
-          await saveMetrics(metrics);
-          fetched++;
+    if (toFetch.length > 0) {
+      const prioritized = toFetch.sort((a, b) => {
+        if (a.type === 'initial' && b.type !== 'initial') return -1;
+        if (a.type !== 'initial' && b.type === 'initial') return 1;
+        return 0;
+      });
+
+      for (let i = 0; i < Math.min(prioritized.length, FETCH_CHUNK_SIZE); i++) {
+        const { ticker } = prioritized[i];
+        try {
+          const metrics = await fetchStockMetrics(ticker);
+          if (metrics) {
+            await saveMetrics(metrics);
+            fetched++;
+          }
+        } catch (e) {
+          console.error(`Cron fetch error for ${ticker}:`, e);
         }
-      } catch (e) {
-        console.error(`Cron fetch error for ${ticker}:`, e);
+        await sleep(randomInt(5000, 15000));
       }
-      await sleep(randomInt(10000, 30000));
+
+      await pruneOldMetrics();
     }
 
-    await pruneOldMetrics();
     await setMetadata('last_fetch_time', new Date().toISOString());
 
+    let aiGenerated = 0;
+    try {
+      aiGenerated = await generateAiReviews();
+    } catch (e) {
+      console.error('AI review generation failed:', e);
+    }
+
     return NextResponse.json({
-      message: `Fetched ${fetched}/${toFetch.length} tickers. Seeded ${seeded} new tickers.`,
+      message: `Fetched ${fetched}/${toFetch.length} tickers. Seeded ${seeded} new tickers. AI reviews: ${aiGenerated}.`,
       fetched,
       total: toFetch.length,
       seeded,
+      aiGenerated,
     });
   } catch (err) {
     console.error('Cron error:', err);

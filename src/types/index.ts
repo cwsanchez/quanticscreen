@@ -142,3 +142,25 @@ export interface Rankings {
 }
 
 export type MetricValue = number | 'N/A';
+
+export interface AiReviewKeyMetrics {
+  overall_score: number;
+  value_score: number;
+  growth_score: number;
+  momentum_score: number;
+  quality_score: number;
+  top_ratios: Record<string, string | number>;
+}
+
+export interface AiReview {
+  id: number;
+  ticker: string;
+  generated_at: string;
+  bull_case: string;
+  bear_case: string;
+  institutional_sentiment: string;
+  retail_sentiment: string;
+  key_metrics: AiReviewKeyMetrics;
+  verdict: string;
+  confidence: number;
+}

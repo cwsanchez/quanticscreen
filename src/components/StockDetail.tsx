@@ -14,6 +14,13 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
+  Brain,
+  ThumbsUp,
+  ThumbsDown,
+  Building2,
+  Users,
+  Gauge,
+  Clock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,7 +37,7 @@ import {
   NEGATIVE_FLAGS,
 } from '@/lib/processor';
 import { PinButton } from '@/components/WatchlistSidebar';
-import type { ProcessedResult, PriceHistoryPoint } from '@/types';
+import type { ProcessedResult, PriceHistoryPoint, AiReview } from '@/types';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -195,6 +202,216 @@ function RankingsGrid({ rankings }: { rankings: Record<string, string> }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function AiScoreRing({ label, score, color }: { label: string; score: number; color: string }) {
+  const circumference = 2 * Math.PI * 28;
+  const offset = circumference - (score / 100) * circumference;
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="relative h-16 w-16">
+        <svg className="h-16 w-16 -rotate-90" viewBox="0 0 64 64">
+          <circle cx="32" cy="32" r="28" fill="none" stroke="hsl(var(--border))" strokeWidth="4" opacity={0.2} />
+          <circle cx="32" cy="32" r="28" fill="none" stroke={color} strokeWidth="4"
+            strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" />
+        </svg>
+        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold tabular-nums">{score}</span>
+      </div>
+      <span className="text-[10px] font-medium text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function AiAnalysisPanel({ symbol }: { symbol: string }) {
+  const [review, setReview] = useState<AiReview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  const fetchReview = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/ai/review/${symbol}`);
+      const json = await res.json();
+      if (json.review) {
+        setReview(json.review);
+      } else if (json.error) {
+        setError(json.error);
+      }
+    } catch {
+      setError('Failed to load AI analysis');
+    } finally {
+      setLoading(false);
+      setGenerating(false);
+    }
+  };
+
+  useEffect(() => { fetchReview(); }, [symbol]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-32 w-full" />
+        <div className="grid gap-4 md:grid-cols-2">
+          <Skeleton className="h-40" />
+          <Skeleton className="h-40" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !review) {
+    return (
+      <Card className="border-border/30 bg-card/30">
+        <CardContent className="flex flex-col items-center justify-center p-12 text-center">
+          <Brain className="mb-3 h-10 w-10 text-muted-foreground" />
+          <p className="font-medium text-muted-foreground">AI Analysis Unavailable</p>
+          <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!review) return null;
+
+  const km = review.key_metrics;
+  const daysAgo = Math.floor((Date.now() - new Date(review.generated_at).getTime()) / (1000 * 60 * 60 * 24));
+  const timeLabel = daysAgo === 0 ? 'Today' : daysAgo === 1 ? '1 day ago' : `${daysAgo} days ago`;
+
+  const confidenceColor = review.confidence >= 70 ? 'text-emerald-400' : review.confidence >= 40 ? 'text-amber-400' : 'text-red-400';
+  const confidenceBg = review.confidence >= 70 ? 'bg-emerald-500/10 border-emerald-500/30' : review.confidence >= 40 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-red-500/10 border-red-500/30';
+
+  const ratios = km?.top_ratios || {};
+
+  return (
+    <div className="space-y-4">
+      {/* Header with verdict + confidence */}
+      <Card className="border-border/30 bg-card/30">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <Brain className="h-5 w-5 text-primary" />
+                <h3 className="text-sm font-semibold">AI Verdict</h3>
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto">
+                  <Clock className="h-3 w-3" />
+                  <span>Generated {timeLabel}</span>
+                </div>
+              </div>
+              <p className="text-sm leading-relaxed">{review.verdict}</p>
+            </div>
+            <div className={`flex flex-col items-center rounded-xl border p-3 ${confidenceBg}`}>
+              <Gauge className={`h-5 w-5 ${confidenceColor}`} />
+              <span className={`text-xl font-bold tabular-nums ${confidenceColor}`}>{review.confidence}%</span>
+              <span className="text-[10px] font-medium text-muted-foreground">Confidence</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Score rings */}
+      {km && (
+        <Card className="border-border/30 bg-card/30">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold mb-3">AI Factor Scores</h3>
+            <div className="flex flex-wrap justify-around gap-4">
+              <AiScoreRing label="Overall" score={km.overall_score} color="hsl(var(--primary))" />
+              <AiScoreRing label="Value" score={km.value_score} color="#f59e0b" />
+              <AiScoreRing label="Growth" score={km.growth_score} color="#22c55e" />
+              <AiScoreRing label="Momentum" score={km.momentum_score} color="#3b82f6" />
+              <AiScoreRing label="Quality" score={km.quality_score} color="#a855f7" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bull / Bear cases */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-emerald-500/20 bg-emerald-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-emerald-400">
+              <ThumbsUp className="h-4 w-4" /> Bull Case
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs leading-relaxed text-foreground/90">{review.bull_case}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-red-500/20 bg-red-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-red-400">
+              <ThumbsDown className="h-4 w-4" /> Bear Case
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs leading-relaxed text-foreground/90">{review.bear_case}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Sentiment cards */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-border/30 bg-card/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Building2 className="h-4 w-4 text-blue-400" /> Institutional Sentiment
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs leading-relaxed text-foreground/90">{review.institutional_sentiment}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/30 bg-card/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Users className="h-4 w-4 text-purple-400" /> Retail Sentiment
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs leading-relaxed text-foreground/90">{review.retail_sentiment}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Key ratios assessment */}
+      {Object.keys(ratios).length > 0 && (
+        <Card className="border-border/30 bg-card/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Fundamental Assessment</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {Object.entries(ratios).map(([key, value]) => {
+                const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+                const strVal = String(value);
+                const isPositive = ['strong', 'cheap', 'accelerating', 'expanding'].includes(strVal.toLowerCase());
+                const isNegative = ['weak', 'expensive', 'decelerating', 'contracting'].includes(strVal.toLowerCase());
+                const textColor = isPositive ? 'text-emerald-400' : isNegative ? 'text-red-400' : 'text-amber-400';
+                return (
+                  <div key={key} className="rounded-lg border border-border/30 bg-card/50 p-2.5 text-center">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+                    <p className={`mt-1 text-xs font-semibold capitalize ${textColor}`}>{strVal}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full"
+        onClick={() => { setGenerating(true); fetchReview(); }}
+        disabled={generating}
+      >
+        {generating ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
+        Regenerate Analysis
+      </Button>
     </div>
   );
 }
@@ -387,6 +604,9 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
               <TabsTrigger value="growth" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Growth & Momentum</TabsTrigger>
               <TabsTrigger value="flags" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Flags</TabsTrigger>
               <TabsTrigger value="rankings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Rankings</TabsTrigger>
+              <TabsTrigger value="ai" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">
+                <Brain className="mr-1 h-3.5 w-3.5" /> AI Analysis
+              </TabsTrigger>
             </TabsList>
 
             {/* Overview Tab */}
@@ -598,6 +818,11 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* AI Analysis Tab */}
+            <TabsContent value="ai" className="mt-4">
+              <AiAnalysisPanel symbol={symbol} />
             </TabsContent>
           </Tabs>
         </div>

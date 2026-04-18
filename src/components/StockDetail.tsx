@@ -14,6 +14,7 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowRight,
   Sparkles,
   Building2,
   Users,
@@ -225,6 +226,126 @@ function verdictStyle(verdict: string): string {
   if (v.includes('strong sell')) return 'bg-red-500/15 border-red-500/40 text-red-400';
   if (v.includes('sell')) return 'bg-red-500/10 border-red-500/30 text-red-400';
   return 'bg-amber-500/10 border-amber-500/30 text-amber-400';
+}
+
+function AiSnapshot({ symbol, onViewFull }: { symbol: string; onViewFull: () => void }) {
+  const [review, setReview] = useState<AiReview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/ai/review/${symbol}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setError(data?.error ?? 'Failed to load AI analysis');
+          setReview(null);
+        } else {
+          setReview(data.review as AiReview);
+        }
+      } catch {
+        if (!cancelled) setError('Network error while loading AI analysis');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol]);
+
+  if (loading) {
+    return (
+      <Card className="border-border/30 bg-card/30">
+        <CardContent className="p-4">
+          <Skeleton className="h-16 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error || !review) {
+    const missingKey = error ? /XAI_API_KEY|missing_api_key/i.test(error) : false;
+    return (
+      <Card className="border-border/30 bg-card/30">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Sparkles className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  xAI Grok Analysis
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {missingKey
+                    ? 'Set XAI_API_KEY to enable AI analysis.'
+                    : review === null && !error
+                      ? 'No AI analysis yet.'
+                      : 'AI analysis unavailable.'}
+                </p>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" onClick={onViewFull}>
+              Full Summary
+              <ArrowRight className="ml-1 h-3 w-3" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-border/30 bg-gradient-to-br from-primary/5 via-card/30 to-card/30">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+              <Sparkles className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                xAI Grok Analysis
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Last generated: {formatRelativeTime(review.generated_at)}
+                {review.model ? ` · ${review.model}` : ''}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${verdictStyle(review.verdict)}`}>
+              {review.verdict}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Confidence
+              <div className="mt-0.5 flex items-center gap-2">
+                <div className="h-1.5 w-24 rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${Math.max(0, Math.min(100, review.confidence))}%` }}
+                  />
+                </div>
+                <span className="font-semibold text-foreground tabular-nums">{review.confidence}%</span>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" onClick={onViewFull}>
+              Full Summary
+              <ArrowRight className="ml-1 h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function AiAnalysisPanel({ symbol }: { symbol: string }) {
@@ -503,6 +624,7 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
   const [rankingsLoading, setRankingsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>('1Y');
+  const [activeTab, setActiveTab] = useState('overview');
 
   const fetchData = async (force = false) => {
     if (force) setRefreshing(true);
@@ -672,7 +794,7 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         {/* Left Column - Tabs */}
         <div>
-          <Tabs defaultValue="overview" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="w-full justify-start flex-wrap h-auto gap-1 bg-transparent p-0 border-b border-border/30 rounded-none">
               <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Overview</TabsTrigger>
               <TabsTrigger value="ratios" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Ratios</TabsTrigger>
@@ -687,22 +809,23 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="mt-4 space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-primary" /> Factor Scores
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  <div className="flex flex-col items-center rounded-xl border border-primary/30 bg-primary/5 p-4">
-                    <BarChart3 className="h-6 w-6 text-primary mb-1" />
-                    <span className="text-2xl font-bold tabular-nums text-primary">{processed.final_score.toFixed(1)}</span>
-                    <span className="text-xs font-medium mt-1">Overall</span>
+              <Card className="border-border/30 bg-card/30">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                    <span>${low52.toFixed(2)}</span>
+                    <span>52-Week Range</span>
+                    <span>${high52.toFixed(2)}</span>
                   </div>
-                  <ScoreBadge label="Value" score={processed.factor_boosts.value} icon={Target} />
-                  <ScoreBadge label="Growth" score={processed.factor_boosts.growth} icon={Zap} />
-                  <ScoreBadge label="Momentum" score={processed.factor_boosts.momentum} icon={TrendingUp} />
-                  <ScoreBadge label="Quality" score={processed.factor_boosts.quality} icon={Shield} />
-                </div>
-              </div>
+                  <div className="h-2 rounded-full bg-secondary">
+                    <div
+                      className="relative h-full rounded-full bg-gradient-to-r from-red-500 via-amber-500 to-emerald-500"
+                      style={{ width: `${Math.max(2, Math.min(98, rangeWidth))}%` }}
+                    >
+                      <div className="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border-2 border-background bg-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               <Card className="border-border/30 bg-card/30">
                 <CardContent className="p-4">
@@ -733,19 +856,22 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
                 </CardContent>
               </Card>
 
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                  <span>${low52.toFixed(2)}</span>
-                  <span>52-Week Range</span>
-                  <span>${high52.toFixed(2)}</span>
-                </div>
-                <div className="h-2 rounded-full bg-secondary">
-                  <div
-                    className="relative h-full rounded-full bg-gradient-to-r from-red-500 via-amber-500 to-emerald-500"
-                    style={{ width: `${Math.max(2, Math.min(98, rangeWidth))}%` }}
-                  >
-                    <div className="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border-2 border-background bg-white" />
+              <AiSnapshot symbol={symbol} onViewFull={() => setActiveTab('ai')} />
+
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-primary" /> Factor Scores
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="flex flex-col items-center rounded-xl border border-primary/30 bg-primary/5 p-4">
+                    <BarChart3 className="h-6 w-6 text-primary mb-1" />
+                    <span className="text-2xl font-bold tabular-nums text-primary">{processed.final_score.toFixed(1)}</span>
+                    <span className="text-xs font-medium mt-1">Overall</span>
                   </div>
+                  <ScoreBadge label="Value" score={processed.factor_boosts.value} icon={Target} />
+                  <ScoreBadge label="Growth" score={processed.factor_boosts.growth} icon={Zap} />
+                  <ScoreBadge label="Momentum" score={processed.factor_boosts.momentum} icon={TrendingUp} />
+                  <ScoreBadge label="Quality" score={processed.factor_boosts.quality} icon={Shield} />
                 </div>
               </div>
             </TabsContent>

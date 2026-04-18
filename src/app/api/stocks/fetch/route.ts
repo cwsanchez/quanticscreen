@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 import { fetchStockMetrics, fetchPriceHistory } from '@/lib/yahoo';
-import { saveMetrics, getLatestMetrics, savePriceHistory, getPriceHistory } from '@/lib/db';
+import { saveMetrics, getLatestMetrics, savePriceHistory, getPriceHistory, touchStockView } from '@/lib/db';
 import { processStock, PRESETS, DEFAULT_WEIGHTS, DEFAULT_METRICS } from '@/lib/processor';
 import { getServiceClient } from '@/lib/supabase';
 import type { StockMetrics, LogicConfig } from '@/types';
@@ -63,6 +63,14 @@ export async function GET(request: NextRequest) {
       if (history && history.length > 0) {
         await savePriceHistory(upperTicker, history);
       }
+    }
+
+    // Mark this ticker as recently viewed so the background cron prioritizes
+    // keeping its metrics fresh. Don't fail the request if this fails.
+    try {
+      await touchStockView(upperTicker);
+    } catch {
+      /* ignore */
     }
 
     return NextResponse.json({

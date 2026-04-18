@@ -236,8 +236,8 @@ export default function PresetsPage() {
               <Users className="mb-3 h-8 w-8 text-muted-foreground" />
               <p className="font-medium">Community Presets Coming Soon</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Share and discover scoring strategies from other users.
-                This feature requires authentication.
+                Share and discover scoring strategies from the community.
+                Coming in a future release.
               </p>
             </CardContent>
           </Card>

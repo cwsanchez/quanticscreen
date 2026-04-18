@@ -3,15 +3,39 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 import { fetchStockMetrics } from '@/lib/yahoo';
-import { saveMetrics, getStaleTickers, getLatestMetrics, pruneOldMetrics, getMetadata, setMetadata } from '@/lib/db';
+import {
+  saveMetrics,
+  getLatestMetrics,
+  pruneOldMetrics,
+  setMetadata,
+  getRecentlyViewedTickers,
+  getTickersWithStaleAiReviews,
+  saveAiReview,
+} from '@/lib/db';
 import { sleep, randomInt } from '@/lib/utils';
 import { getServiceClient } from '@/lib/supabase';
-import { DEFAULT_TICKERS } from '@/lib/tickers';
+import { PRIORITIZED_TICKERS } from '@/lib/tickers';
+import { processStock, PRESETS, DEFAULT_WEIGHTS, DEFAULT_METRICS } from '@/lib/processor';
+import { generateAiReview } from '@/lib/xai';
+import type { StockMetrics } from '@/types';
 
 export const maxDuration = 300;
 
-const SEED_BATCH_SIZE = 50;
-const FETCH_CHUNK_SIZE = 30;
+// Per-run budgets, tuned to fit within Vercel's 300s maxDuration while still
+// growing the database meaningfully. At the default schedule (every 4h → 6
+// runs/day) this means ~90-120 newly populated + refreshed tickers/day and
+// up to 60 AI reviews/day.
+const POPULATE_BUDGET = 15;
+const REFRESH_BUDGET = 10;
+const AI_REVIEW_BUDGET = 10;
+const WATCHED_RECENT_LIMIT = 40;
+const YAHOO_SLEEP_MIN_MS = 3000;
+const YAHOO_SLEEP_MAX_MS = 8000;
+const AI_SLEEP_MIN_MS = 1000;
+const AI_SLEEP_MAX_MS = 3000;
+// Stop starting new fetches after this much wall-time has elapsed so the
+// handler always returns before Vercel's maxDuration kills it.
+const SOFT_TIME_BUDGET_MS = 270_000;
 
 function getLastCloseDate(): Date {
   const now = new Date();
@@ -23,27 +47,23 @@ function getLastCloseDate(): Date {
   return et;
 }
 
-async function seedMissingTickers(): Promise<number> {
+async function listExistingTickers(): Promise<Set<string>> {
   const sb = getServiceClient();
-  const { data: existing } = await sb.from('stocks').select('ticker');
-  const existingSet = new Set(existing?.map((s) => s.ticker) ?? []);
+  const { data } = await sb.from('stocks').select('ticker');
+  return new Set((data ?? []).map((s) => s.ticker));
+}
 
-  const missing = DEFAULT_TICKERS.filter((t) => !existingSet.has(t));
-  if (missing.length === 0) return 0;
-
-  const batch = missing.slice(0, SEED_BATCH_SIZE).map((ticker) => ({
-    ticker,
-    company_name: 'N/A',
-    industry: 'N/A',
-    sector: 'N/A',
-  }));
-
-  const { error } = await sb.from('stocks').upsert(batch, { onConflict: 'ticker' });
-  if (error) {
-    console.error('Seed batch error:', error);
-    return 0;
+async function fetchAndStore(ticker: string): Promise<StockMetrics | null> {
+  try {
+    const metrics = await fetchStockMetrics(ticker);
+    if (metrics) {
+      await saveMetrics(metrics);
+      return metrics;
+    }
+  } catch (e) {
+    console.error(`Cron fetch error for ${ticker}:`, e);
   }
-  return batch.length;
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -54,73 +74,127 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const startedAt = Date.now();
+  const timeLeft = () => SOFT_TIME_BUDGET_MS - (Date.now() - startedAt);
+
   try {
-    const seeded = await seedMissingTickers();
+    const existing = await listExistingTickers();
+    const lastClose = getLastCloseDate();
 
-    const lastFetchStr = await getMetadata('last_fetch_time');
-    const lastFetch = lastFetchStr ? new Date(lastFetchStr) : null;
-
-    const now = new Date();
-    const todayMidnight = new Date(now);
-    todayMidnight.setHours(0, 0, 0, 0);
-
-    if (lastFetch && lastFetch >= todayMidnight) {
-      return NextResponse.json({
-        message: 'Already fetched today.',
-        fetched: 0,
-        seeded,
-      });
+    // 1. Populate missing priority tickers with full metrics fetches.
+    const missing = PRIORITIZED_TICKERS.filter((t) => !existing.has(t)).slice(0, POPULATE_BUDGET);
+    let populated = 0;
+    for (const ticker of missing) {
+      if (timeLeft() <= 0) break;
+      const saved = await fetchAndStore(ticker);
+      if (saved) populated += 1;
+      await sleep(randomInt(YAHOO_SLEEP_MIN_MS, YAHOO_SLEEP_MAX_MS));
     }
 
-    const staleTickers = await getStaleTickers();
-    const lastCloseDate = getLastCloseDate();
+    // 2. Pick stocks to refresh: union of priority list (already in DB) + recently viewed.
+    const recent = await getRecentlyViewedTickers(WATCHED_RECENT_LIMIT);
+    const refreshCandidateSet = new Set<string>();
+    for (const t of recent) refreshCandidateSet.add(t);
+    for (const t of PRIORITIZED_TICKERS) {
+      if (existing.has(t) || missing.includes(t)) refreshCandidateSet.add(t);
+    }
 
-    const toFetch: Array<{ ticker: string; type: string }> = [];
+    // Keep only tickers present in DB (we don't refresh what wasn't populated).
+    const candidates: string[] = [];
+    const nowExisting = await listExistingTickers();
+    for (const t of refreshCandidateSet) {
+      if (nowExisting.has(t)) candidates.push(t);
+    }
 
-    for (const t of staleTickers) {
-      const metrics = await getLatestMetrics(t);
-      if (!metrics) {
-        toFetch.push({ ticker: t, type: 'initial' });
+    // Prioritize: recently viewed first, then priority list.
+    candidates.sort((a, b) => {
+      const ai = recent.indexOf(a);
+      const bi = recent.indexOf(b);
+      const arank = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
+      const brank = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
+      return arank - brank;
+    });
+
+    // Pick stale ones: no metrics, or metrics older than last close.
+    const refreshQueue: string[] = [];
+    for (const t of candidates) {
+      const m = await getLatestMetrics(t);
+      if (!m) {
+        refreshQueue.push(t);
       } else {
-        const fetchDate = new Date(metrics.fetch_timestamp ?? '');
-        if (fetchDate < lastCloseDate) {
-          toFetch.push({ ticker: t, type: 'refresh' });
-        }
+        const fetchDate = new Date(m.fetch_timestamp ?? '');
+        if (fetchDate < lastClose) refreshQueue.push(t);
       }
+      if (refreshQueue.length >= REFRESH_BUDGET) break;
     }
 
-    if (toFetch.length === 0) {
-      return NextResponse.json({
-        message: 'No tickers to fetch.',
-        fetched: 0,
-        seeded,
-      });
+    let refreshed = 0;
+    for (const ticker of refreshQueue) {
+      if (timeLeft() <= 0) break;
+      const saved = await fetchAndStore(ticker);
+      if (saved) refreshed += 1;
+      await sleep(randomInt(YAHOO_SLEEP_MIN_MS, YAHOO_SLEEP_MAX_MS));
     }
 
-    let fetched = 0;
+    // 3. Throttled AI review generation for recently viewed stocks.
+    let aiGenerated = 0;
+    const aiErrors: string[] = [];
+    if (process.env.XAI_API_KEY) {
+      // Prefer recently viewed tickers that don't have a fresh (< 7d) review.
+      const aiCandidates = recent.length > 0 ? recent : PRIORITIZED_TICKERS.slice(0, 40);
+      const stale = await getTickersWithStaleAiReviews(aiCandidates, 7);
+      const aiQueue = stale.slice(0, AI_REVIEW_BUDGET);
 
-    for (let i = 0; i < Math.min(toFetch.length, FETCH_CHUNK_SIZE); i++) {
-      const { ticker } = toFetch[i];
-      try {
-        const metrics = await fetchStockMetrics(ticker);
-        if (metrics) {
-          await saveMetrics(metrics);
-          fetched++;
+      for (const ticker of aiQueue) {
+        if (timeLeft() <= 0) break;
+        try {
+          const metrics = await getLatestMetrics(ticker);
+          if (!metrics) continue;
+          const processed = processStock(
+            metrics,
+            DEFAULT_WEIGHTS,
+            DEFAULT_METRICS,
+            PRESETS.Overall
+          );
+          const generated = await generateAiReview({
+            ticker,
+            metrics,
+            factorBoosts: processed.factor_boosts,
+            finalScore: processed.final_score,
+          });
+          if (generated) {
+            await saveAiReview({
+              ticker,
+              bull_case: generated.payload.bull_case,
+              bear_case: generated.payload.bear_case,
+              institutional_sentiment: generated.payload.institutional_sentiment,
+              retail_sentiment: generated.payload.retail_sentiment,
+              key_metrics: generated.payload.key_metrics,
+              verdict: generated.payload.verdict,
+              confidence: generated.payload.confidence,
+              model: generated.model,
+            });
+            aiGenerated += 1;
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'unknown';
+          console.error(`AI review error for ${ticker}:`, msg);
+          aiErrors.push(`${ticker}: ${msg}`);
         }
-      } catch (e) {
-        console.error(`Cron fetch error for ${ticker}:`, e);
+        await sleep(randomInt(AI_SLEEP_MIN_MS, AI_SLEEP_MAX_MS));
       }
-      await sleep(randomInt(10000, 30000));
     }
 
     await pruneOldMetrics();
     await setMetadata('last_fetch_time', new Date().toISOString());
 
     return NextResponse.json({
-      message: `Fetched ${fetched}/${toFetch.length} tickers. Seeded ${seeded} new tickers.`,
-      fetched,
-      total: toFetch.length,
-      seeded,
+      populated,
+      refreshed,
+      ai_generated: aiGenerated,
+      ai_errors: aiErrors.slice(0, 5),
+      missing_remaining: Math.max(0, PRIORITIZED_TICKERS.filter((t) => !nowExisting.has(t)).length - populated),
+      message: `Populated ${populated} new, refreshed ${refreshed}, generated ${aiGenerated} AI reviews.`,
     });
   } catch (err) {
     console.error('Cron error:', err);

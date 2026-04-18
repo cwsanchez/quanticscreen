@@ -1,3 +1,7 @@
+// Prioritized list of ~500 high-quality tickers, roughly ordered by market cap,
+// covering the S&P 500, top-cap names, and frequently searched stocks.
+// The cron handler uses this list to gradually seed missing stocks and keep
+// the database growing automatically.
 export const DEFAULT_TICKERS = [
   "MSFT","AAPL","AMZN","META","AVGO","GOOGL","TSLA","GOOG","BRK-B","JPM",
   "LLY","V","NFLX","XOM","ORCL","MA","WMT","JNJ","COST","ABBV",
@@ -70,3 +74,9 @@ export const DEFAULT_TICKERS = [
   "AWI","AOS","NFG","DINO","ZION","SNAP","MKSI","CVLT","LYFT","JOBY",
   "OSK",
 ];
+
+// Prioritized ticker list used by the background cron — the first ~500
+// entries of DEFAULT_TICKERS, which are roughly ordered by market cap and
+// represent the S&P 500 + top-cap + frequently searched names.
+export const PRIORITIZED_TICKERS: string[] = DEFAULT_TICKERS.slice(0, 500);
+

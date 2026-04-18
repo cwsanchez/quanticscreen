@@ -24,7 +24,8 @@ QuanticScreen is a personal stock research dashboard that combines real-time Yah
 - **Advanced Screener** — TanStack Table v8 with sorting, filtering, column visibility, pagination, and CSV export; loads on demand via "Search" button
 - **Custom Logic Builder** — Build your own scoring strategy: select metrics, adjust weights, configure flag boosts, preview results
 - **Auto-Insert Tickers** — Searching a ticker that doesn't exist in the database automatically fetches and inserts it
-- **Smart Background Population** — Cron job automatically seeds and refreshes S&P 500 tickers over time, so the database grows naturally
+- **Smart Background Population** — Cron job automatically populates ~500 prioritized tickers (S&P 500 + top market-cap + frequently searched) and refreshes watched / recently viewed stocks, so the database grows naturally
+- **AI Analysis (xAI Grok)** — Professional weekly AI-generated company analysis with Bull/Bear cases, institutional & retail sentiment, key metrics, verdict, and confidence — cached in Supabase and throttled for cost control
 - **Dark Mode** — Professional finance-grade UI with dark theme and responsive design
 
 ---
@@ -66,6 +67,7 @@ npm install
 2. Open the **SQL Editor** and run the contents of:
    - `supabase/migrations/001_initial_schema.sql` — core tables
    - `supabase/migrations/002_user_watchlists.sql` — watchlist table (kept for schema compatibility)
+   - `supabase/migrations/003_ai_reviews.sql` — xAI Grok AI reviews cache + recently-viewed tracking
 
 This creates the following tables and views:
 
@@ -77,6 +79,8 @@ This creates the following tables and views:
 | `processed_results` | Cached scoring results |
 | `price_history` | Historical price data (JSON) |
 | `metadata` | Key-value store for app state (e.g. last fetch time) |
+| `ai_reviews` | Cached xAI Grok company analysis (1 row per generation, latest per ticker used) |
+| `latest_ai_reviews` | View — most recent AI review per ticker |
 
 ---
 
@@ -103,6 +107,12 @@ SUPABASE_SERVICE_ROLE_KEY=your-secret-key-here
 
 # Secret for Vercel Cron job authentication (optional locally, required in production)
 CRON_SECRET=your-cron-secret-here
+
+# xAI (Grok) API key — enables the "AI Analysis" tab on stock pages and
+# lets the cron job pre-generate weekly AI reviews for recently viewed
+# tickers. Without this key the app still runs; the AI Analysis tab will
+# show a "disabled" state until the key is added.
+XAI_API_KEY=your-xai-api-key-here
 ```
 
 > **Supabase UI label mapping:**
@@ -127,10 +137,10 @@ If your Supabase connection is configured correctly and you've run the migration
 
 There are two ways stocks enter the database:
 
-1. **On-demand search** — Searching a ticker that doesn't exist auto-fetches it from Yahoo Finance and inserts it
-2. **Background cron job** — The cron handler gradually seeds the S&P 500 (from a hardcoded list of 700+ popular tickers) and refreshes stale metrics
+1. **On-demand search** — Searching a ticker that doesn't exist auto-fetches it from Yahoo Finance and inserts it. Viewing a ticker also marks it as "recently viewed" so the cron prioritizes keeping its metrics fresh.
+2. **Background cron job** — Every run, the cron handler populates missing tickers from a prioritized ~500-ticker list (S&P 500 + top market-cap + frequently searched), refreshes metrics on watched and recently viewed stocks, and generates a small batch of AI reviews.
 
-No manual seeding is required. The database grows naturally over time.
+No manual seeding is required. The database grows naturally over time — faster than before, because every run both *populates* missing priority tickers and *refreshes* stale ones in a single pass.
 
 ---
 
@@ -149,16 +159,42 @@ The app includes a Vercel Cron job configured in `vercel.json`:
 }
 ```
 
-This hits `GET /api/cron` every 4 hours. The cron handler:
+This hits `GET /api/cron` every 4 hours. On every run, the cron handler:
 
-1. **Seeds missing tickers** — Checks which tickers from the default list are missing and inserts up to 50 per run
-2. Checks if metrics were already fetched today
-3. Identifies stale tickers (data older than last market close)
-4. Fetches up to 30 tickers per run with randomized delays (to avoid rate limits)
-5. Prunes old metric entries
-6. Authenticates via `Authorization: Bearer <CRON_SECRET>`
+1. **Populates missing priority tickers** — Fetches full metrics for up to 40 tickers from the prioritized ~500-ticker list that aren't yet in the database (with randomized delays to avoid rate limits).
+2. **Refreshes stale metrics** — Picks up to 30 tickers (prioritizing recently viewed and then the priority list) whose metrics are older than the last market close, and re-fetches them.
+3. **Generates AI reviews (throttled)** — If `XAI_API_KEY` is set, generates up to 10 fresh xAI Grok analyses per run for recently viewed tickers without a review in the last 7 days.
+4. **Prunes old metric entries**.
+5. **Authenticates** via `Authorization: Bearer <CRON_SECRET>` (if configured).
 
 Set `CRON_SECRET` in your Vercel environment variables to secure this endpoint in production.
+
+---
+
+## AI Analysis (xAI Grok)
+
+Every stock page includes an **AI Analysis** tab powered by [xAI Grok](https://x.ai/api).
+
+The analysis is a professional, balanced research note covering:
+
+- **Bull case** and **Bear case**
+- **Institutional sentiment** and **Retail sentiment**
+- **Key metrics** — Overall / Value / Growth / Momentum / Quality scores plus top ratios
+- **Verdict** (Strong Buy / Buy / Hold / Sell / Strong Sell) with a **confidence** score
+
+### How it works
+
+- **Endpoint**: `GET /api/ai/review/[symbol]` — returns the most recent review if it's less than 7 days old, otherwise generates and caches a new one.
+- **Model**: `grok-4-1-fast-reasoning` (structured JSON response).
+- **Caching**: results are stored in the `ai_reviews` Supabase table; a `latest_ai_reviews` view gives the most recent review per ticker.
+- **Throttling**: the cron job generates at most 10 reviews per run to keep costs low.
+- **Manual refresh**: a "Regenerate" button on the AI Analysis tab forces a fresh call via `?refresh=true`.
+
+### Setup
+
+1. Create an API key at [x.ai/api](https://x.ai/api).
+2. Add `XAI_API_KEY` to your `.env.local` (and to Vercel environment variables in production).
+3. The AI Analysis tab activates automatically. Without the key, the tab shows a polite "disabled" state with setup instructions and the rest of the app is unaffected.
 
 ---
 
@@ -171,7 +207,8 @@ Set `CRON_SECRET` in your Vercel environment variables to secure this endpoint i
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the Publishable key from Supabase)
    - `SUPABASE_SERVICE_ROLE_KEY` (the Secret key from Supabase)
    - `CRON_SECRET`
-4. **Deploy** — the cron job will automatically run every 4 hours, seeding tickers and refreshing data
+   - `XAI_API_KEY` (optional — enables the AI Analysis tab)
+4. **Deploy** — the cron job will automatically run every 4 hours, populating new priority tickers, refreshing stale metrics on watched / recently viewed stocks, and generating a small batch of AI reviews
 
 ---
 
@@ -186,10 +223,12 @@ src/
 │   ├── builder/page.tsx       # Custom logic builder
 │   ├── presets/page.tsx       # Preset management
 │   └── api/
-│       ├── cron/route.ts      # Background refresh + ticker seeding (Vercel Cron)
+│       ├── cron/route.ts      # Background population + refresh + throttled AI reviews (Vercel Cron)
+│       ├── ai/
+│       │   └── review/[symbol]/route.ts  # xAI Grok AI analysis (cached 7 days)
 │       └── stocks/
 │           ├── search/        # Yahoo Finance search
-│           ├── fetch/         # Fetch & score single stock (auto-inserts)
+│           ├── fetch/         # Fetch & score single stock (auto-inserts, marks recently viewed)
 │           └── process/       # Score all stocks (GET preset, POST custom)
 ├── components/
 │   ├── Navbar.tsx             # Navigation bar
@@ -201,7 +240,8 @@ src/
 │   ├── processor.ts           # Scoring engine
 │   ├── yahoo.ts               # Yahoo Finance data fetcher (v3+ API)
 │   ├── db.ts                  # Supabase database operations
-│   ├── tickers.ts             # Default ticker list (700+)
+│   ├── tickers.ts             # Default + prioritized ticker lists (~500 high-quality tickers)
+│   ├── xai.ts                 # xAI Grok client & structured-JSON review generator
 │   └── utils.ts               # Utility functions
 └── types/
     └── index.ts               # TypeScript interfaces

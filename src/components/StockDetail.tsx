@@ -14,6 +14,10 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
+  Sparkles,
+  Building2,
+  Users,
+  Gauge,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,7 +34,7 @@ import {
   NEGATIVE_FLAGS,
 } from '@/lib/processor';
 import { PinButton } from '@/components/WatchlistSidebar';
-import type { ProcessedResult, PriceHistoryPoint } from '@/types';
+import type { ProcessedResult, PriceHistoryPoint, AiReview } from '@/types';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -195,6 +199,294 @@ function RankingsGrid({ rankings }: { rankings: Record<string, string> }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return '';
+  const deltaMs = Date.now() - then;
+  const mins = Math.round(deltaMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const months = Math.round(days / 30);
+  return `${months} month${months === 1 ? '' : 's'} ago`;
+}
+
+function verdictStyle(verdict: string): string {
+  const v = verdict.toLowerCase();
+  if (v.includes('strong buy')) return 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400';
+  if (v.includes('buy')) return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+  if (v.includes('strong sell')) return 'bg-red-500/15 border-red-500/40 text-red-400';
+  if (v.includes('sell')) return 'bg-red-500/10 border-red-500/30 text-red-400';
+  return 'bg-amber-500/10 border-amber-500/30 text-amber-400';
+}
+
+function AiAnalysisPanel({ symbol }: { symbol: string }) {
+  const [review, setReview] = useState<AiReview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async (force = false) => {
+    if (force) setGenerating(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/ai/review/${symbol}${force ? '?refresh=true' : ''}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error ?? 'Failed to load AI analysis');
+        setReview(null);
+      } else {
+        setReview(data.review as AiReview);
+      }
+    } catch {
+      setError('Network error while loading AI analysis');
+    } finally {
+      setLoading(false);
+      setGenerating(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-24 w-full" />
+        <div className="grid gap-4 md:grid-cols-2">
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    const missingKey = /XAI_API_KEY|missing_api_key/i.test(error);
+    return (
+      <Card className="border-border/30 bg-card/30">
+        <CardContent className="p-6 text-center space-y-3">
+          <Sparkles className="mx-auto h-8 w-8 text-primary" />
+          <p className="text-sm font-medium">AI analysis unavailable</p>
+          <p className="text-xs text-muted-foreground max-w-md mx-auto">
+            {missingKey
+              ? 'Set the XAI_API_KEY environment variable to enable AI-generated company analysis powered by xAI Grok.'
+              : error}
+          </p>
+          {!missingKey && (
+            <Button size="sm" variant="outline" onClick={() => load(true)} disabled={generating}>
+              {generating ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+              Try again
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!review) {
+    return (
+      <Card className="border-border/30 bg-card/30">
+        <CardContent className="p-6 text-center text-sm text-muted-foreground">
+          No AI analysis yet.
+          <div className="mt-3">
+            <Button size="sm" onClick={() => load(true)} disabled={generating}>
+              {generating ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
+              Generate
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const km = (review.key_metrics ?? {}) as Record<string, unknown>;
+  const scoreKeys: Array<[string, string]> = [
+    ['overall_score', 'Overall'],
+    ['value_score', 'Value'],
+    ['growth_score', 'Growth'],
+    ['momentum_score', 'Momentum'],
+    ['quality_score', 'Quality'],
+  ];
+  const topRatios = (km.top_ratios && typeof km.top_ratios === 'object'
+    ? (km.top_ratios as Record<string, unknown>)
+    : {}) as Record<string, unknown>;
+
+  return (
+    <div className="space-y-4">
+      {/* Verdict hero */}
+      <Card className="border-border/30 bg-gradient-to-br from-primary/5 via-card/30 to-card/30">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Sparkles className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  xAI Grok Analysis
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Last generated: {formatRelativeTime(review.generated_at)}
+                  {review.model ? ` · ${review.model}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${verdictStyle(review.verdict)}`}>
+                {review.verdict}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Confidence
+                <div className="mt-0.5 flex items-center gap-2">
+                  <div className="h-1.5 w-24 rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.max(0, Math.min(100, review.confidence))}%` }}
+                    />
+                  </div>
+                  <span className="font-semibold text-foreground tabular-nums">{review.confidence}%</span>
+                </div>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => load(true)} disabled={generating}>
+                {generating ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
+                Regenerate
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bull / Bear */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-emerald-500/30 bg-emerald-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-emerald-400">
+              <TrendingUp className="h-4 w-4" /> Bull Case
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+              {review.bull_case || '—'}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-red-500/30 bg-red-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-red-400">
+              <TrendingDown className="h-4 w-4" /> Bear Case
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+              {review.bear_case || '—'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Sentiments */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-border/30 bg-card/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Building2 className="h-4 w-4 text-primary" /> Institutional Sentiment
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+              {review.institutional_sentiment || '—'}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/30 bg-card/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Users className="h-4 w-4 text-primary" /> Retail Sentiment
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+              {review.retail_sentiment || '—'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Key metrics */}
+      <Card className="border-border/30 bg-card/30">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Gauge className="h-4 w-4 text-primary" /> Key Metrics
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {scoreKeys.map(([key, label]) => {
+              const raw = km[key];
+              const num = typeof raw === 'number' ? raw : Number(raw);
+              const val = Number.isFinite(num) ? Math.round(num) : null;
+              return (
+                <div
+                  key={key}
+                  className="rounded-lg border border-border/30 bg-card/50 p-3 text-center"
+                >
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {label}
+                  </p>
+                  <p className="mt-1 text-xl font-bold tabular-nums text-primary">
+                    {val ?? '—'}
+                  </p>
+                  <div className="mt-1 h-1 w-full rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.max(0, Math.min(100, val ?? 0))}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {Object.keys(topRatios).length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Top Ratios
+              </p>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {Object.entries(topRatios).map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between rounded-md border border-border/20 bg-card/30 px-3 py-1.5"
+                  >
+                    <span className="text-xs text-muted-foreground">{label}</span>
+                    <span className="text-xs font-medium tabular-nums">
+                      {typeof value === 'number' || typeof value === 'string' ? String(value) : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <p className="text-[10px] text-muted-foreground text-center">
+        AI-generated analysis for informational purposes only. Not financial advice.
+      </p>
     </div>
   );
 }
@@ -387,6 +679,10 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
               <TabsTrigger value="growth" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Growth & Momentum</TabsTrigger>
               <TabsTrigger value="flags" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Flags</TabsTrigger>
               <TabsTrigger value="rankings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Rankings</TabsTrigger>
+              <TabsTrigger value="ai" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">
+                <Sparkles className="mr-1 h-3 w-3 text-primary" />
+                AI Analysis
+              </TabsTrigger>
             </TabsList>
 
             {/* Overview Tab */}
@@ -578,6 +874,11 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+
+            {/* AI Analysis Tab */}
+            <TabsContent value="ai" className="mt-4">
+              <AiAnalysisPanel symbol={symbol} />
             </TabsContent>
 
             {/* Rankings Tab */}

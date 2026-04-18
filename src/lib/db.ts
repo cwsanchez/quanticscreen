@@ -1,5 +1,5 @@
 import { getServiceClient } from './supabase';
-import type { StockMetrics, PriceHistoryPoint } from '@/types';
+import type { StockMetrics, PriceHistoryPoint, AiReview } from '@/types';
 
 function val(v: unknown): unknown {
   return v === 'N/A' ? null : v;
@@ -209,6 +209,25 @@ export async function savePriceHistory(ticker: string, history: PriceHistoryPoin
   });
 }
 
+export async function touchStockView(ticker: string): Promise<void> {
+  const sb = getServiceClient();
+  await sb
+    .from('stocks')
+    .update({ last_viewed_at: new Date().toISOString() })
+    .eq('ticker', ticker);
+}
+
+export async function getRecentlyViewedTickers(limit: number = 50): Promise<string[]> {
+  const sb = getServiceClient();
+  const { data } = await sb
+    .from('stocks')
+    .select('ticker, last_viewed_at')
+    .not('last_viewed_at', 'is', null)
+    .order('last_viewed_at', { ascending: false })
+    .limit(limit);
+  return data?.map((r) => r.ticker) ?? [];
+}
+
 export async function getMetadata(key: string): Promise<string | null> {
   const sb = getServiceClient();
   const { data } = await sb.from('metadata').select('value').eq('key', key).single();
@@ -229,6 +248,65 @@ export async function deleteStock(ticker: string): Promise<void> {
   await sb.from('metric_fetches').delete().eq('ticker', ticker);
   await sb.from('price_history').delete().eq('ticker', ticker);
   await sb.from('stocks').delete().eq('ticker', ticker);
+}
+
+export async function getLatestAiReview(
+  ticker: string,
+  maxAgeDays: number = 7
+): Promise<AiReview | null> {
+  const sb = getServiceClient();
+  const { data } = await sb
+    .from('ai_reviews')
+    .select('*')
+    .eq('ticker', ticker)
+    .order('generated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const ageMs = Date.now() - new Date(data.generated_at).getTime();
+  if (ageMs > maxAgeDays * 24 * 60 * 60 * 1000) return null;
+  return data as AiReview;
+}
+
+export async function saveAiReview(review: Omit<AiReview, 'id' | 'generated_at'> & { generated_at?: string }): Promise<AiReview | null> {
+  const sb = getServiceClient();
+  const { data, error } = await sb
+    .from('ai_reviews')
+    .insert({
+      ticker: review.ticker,
+      generated_at: review.generated_at ?? new Date().toISOString(),
+      bull_case: review.bull_case,
+      bear_case: review.bear_case,
+      institutional_sentiment: review.institutional_sentiment,
+      retail_sentiment: review.retail_sentiment,
+      key_metrics: review.key_metrics,
+      verdict: review.verdict,
+      confidence: review.confidence,
+      model: review.model ?? null,
+    })
+    .select('*')
+    .single();
+  if (error) {
+    console.error('AI review insert error:', error);
+    return null;
+  }
+  return data as AiReview;
+}
+
+export async function getTickersWithStaleAiReviews(
+  candidates: string[],
+  maxAgeDays: number = 7
+): Promise<string[]> {
+  if (candidates.length === 0) return [];
+  const sb = getServiceClient();
+  const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await sb
+    .from('ai_reviews')
+    .select('ticker, generated_at')
+    .in('ticker', candidates)
+    .gte('generated_at', cutoff);
+  const fresh = new Set((data ?? []).map((r) => r.ticker));
+  return candidates.filter((t) => !fresh.has(t));
 }
 
 export async function pruneOldMetrics(

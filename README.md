@@ -221,7 +221,7 @@ src/
 │   ├── screener/page.tsx      # Stock screener with TanStack table
 │   ├── ticker/[symbol]/       # Stock detail page
 │   ├── builder/page.tsx       # Custom logic builder
-│   ├── presets/page.tsx       # Preset management
+│   ├── ai/page.tsx            # Sortable list of AI-rated companies
 │   └── api/
 │       ├── cron/route.ts      # Background population + refresh + throttled AI reviews (Vercel Cron)
 │       ├── ai/

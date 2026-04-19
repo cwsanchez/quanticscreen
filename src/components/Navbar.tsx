@@ -7,7 +7,7 @@ import {
   BarChart3,
   Search,
   Sliders,
-  BookOpen,
+  Sparkles,
   Home,
   Menu,
   X,
@@ -17,8 +17,8 @@ import { useState } from 'react';
 const navItems = [
   { href: '/', label: 'Dashboard', icon: Home },
   { href: '/screener', label: 'Screener', icon: BarChart3 },
+  { href: '/ai', label: 'AI Ratings', icon: Sparkles },
   { href: '/builder', label: 'Builder', icon: Sliders },
-  { href: '/presets', label: 'Presets', icon: BookOpen },
 ];
 
 export function Navbar() {

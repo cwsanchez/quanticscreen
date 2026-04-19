@@ -3,10 +3,17 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 import { fetchStockMetrics, fetchPriceHistory } from '@/lib/yahoo';
-import { saveMetrics, getLatestMetrics, savePriceHistory, getPriceHistory, touchStockView } from '@/lib/db';
+import {
+  saveMetrics,
+  getLatestMetrics,
+  savePriceHistory,
+  getPriceHistory,
+  touchStockView,
+  getLatestAiReview,
+} from '@/lib/db';
 import { processStock, PRESETS, DEFAULT_WEIGHTS, DEFAULT_METRICS } from '@/lib/processor';
 import { getServiceClient } from '@/lib/supabase';
-import type { StockMetrics, LogicConfig } from '@/types';
+import type { StockMetrics, LogicConfig, AiReview } from '@/types';
 
 export async function GET(request: NextRequest) {
   const ticker = request.nextUrl.searchParams.get('ticker');
@@ -73,9 +80,17 @@ export async function GET(request: NextRequest) {
       /* ignore */
     }
 
+    let aiReview: AiReview | null = null;
+    try {
+      aiReview = await getLatestAiReview(upperTicker, 30);
+    } catch {
+      /* ignore */
+    }
+
     return NextResponse.json({
       processed,
       history: history ?? [],
+      aiReview,
     });
   } catch (err) {
     console.error('Fetch error:', err);

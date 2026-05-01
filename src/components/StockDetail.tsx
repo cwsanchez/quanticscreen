@@ -336,47 +336,78 @@ function AiSnapshot({ symbol, onViewFull }: { symbol: string; onViewFull: () => 
   }
 
   return (
-    <Card className="border-border/30 bg-gradient-to-br from-primary/5 via-card/30 to-card/30">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <Sparkles className="h-5 w-5 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                xAI Grok Analysis
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Last generated: {formatRelativeTime(review.generated_at)}
-                {review.model ? ` · ${review.model}` : ''}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${verdictStyle(review.verdict)}`}>
-              {review.verdict}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Confidence
-              <div className="mt-0.5 flex items-center gap-2">
-                <div className="h-1.5 w-24 rounded-full bg-secondary">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: `${Math.max(0, Math.min(100, review.confidence))}%` }}
-                  />
-                </div>
-                <span className="font-semibold text-foreground tabular-nums">{review.confidence}%</span>
+    <div className="space-y-4">
+      <Card className="border-border/30 bg-gradient-to-br from-primary/5 via-card/30 to-card/30">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Sparkles className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  xAI Grok Analysis
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Last generated: {formatRelativeTime(review.generated_at)}
+                  {review.model ? ` · ${review.model}` : ''}
+                </p>
               </div>
             </div>
-            <Button size="sm" variant="outline" onClick={onViewFull}>
-              Full Summary
-              <ArrowRight className="ml-1 h-3 w-3" />
-            </Button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${verdictStyle(review.verdict)}`}>
+                {review.verdict}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Confidence
+                <div className="mt-0.5 flex items-center gap-2">
+                  <div className="h-1.5 w-24 rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.max(0, Math.min(100, review.confidence))}%` }}
+                    />
+                  </div>
+                  <span className="font-semibold text-foreground tabular-nums">{review.confidence}%</span>
+                </div>
+              </div>
+              <Button size="sm" variant="outline" onClick={onViewFull}>
+                Full Summary
+                <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {(review.institutional_sentiment || review.retail_sentiment) && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="border-border/30 bg-card/30">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Building2 className="h-4 w-4 text-primary" /> Institutional Sentiment
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line line-clamp-6">
+                {review.institutional_sentiment || '—'}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-border/30 bg-card/30">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Users className="h-4 w-4 text-primary" /> Retail Sentiment
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line line-clamp-6">
+                {review.retail_sentiment || '—'}
+              </p>
+            </CardContent>
+          </Card>
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
 

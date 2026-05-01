@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Loader2,
-  Plus,
   Scale,
   Sparkles,
   X,
@@ -22,7 +21,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   formatLarge,
   getFloat,
-  NEGATIVE_FLAGS,
   processStock,
   PRESETS,
   DEFAULT_WEIGHTS,
@@ -106,14 +104,6 @@ const metricDefs: MetricDef[] = [
     format: (m) => (m['Average Volume'] !== 'N/A' ? formatLarge(Number(m['Average Volume'])) : '—'),
   },
   {
-    label: '52W High',
-    format: (m) => (m['52W High'] !== 'N/A' ? formatMoney(Number(m['52W High'])) : '—'),
-  },
-  {
-    label: '52W Low',
-    format: (m) => (m['52W Low'] !== 'N/A' ? formatMoney(Number(m['52W Low'])) : '—'),
-  },
-  {
     label: 'P/E',
     format: (m) => (m['P/E'] !== 'N/A' ? formatNum(Number(m['P/E']), 1) : '—'),
     value: (m) => (m['P/E'] !== 'N/A' && Number(m['P/E']) > 0 ? Number(m['P/E']) : null),
@@ -130,6 +120,18 @@ const metricDefs: MetricDef[] = [
     format: (m) => (m.PEG !== 'N/A' ? formatNum(Number(m.PEG), 2) : '—'),
     value: (m) => (m.PEG !== 'N/A' && Number(m.PEG) > 0 ? Number(m.PEG) : null),
     direction: -1,
+  },
+  {
+    label: 'Revenue Growth',
+    format: (m) => (m['Revenue Growth'] !== 'N/A' ? formatPct(Number(m['Revenue Growth'])) : '—'),
+    value: (m) => (m['Revenue Growth'] !== 'N/A' ? Number(m['Revenue Growth']) : null),
+    direction: 1,
+  },
+  {
+    label: 'Earnings Growth',
+    format: (m) => (m['Earnings Growth'] !== 'N/A' ? formatPct(Number(m['Earnings Growth'])) : '—'),
+    value: (m) => (m['Earnings Growth'] !== 'N/A' ? Number(m['Earnings Growth']) : null),
+    direction: 1,
   },
   {
     label: 'Div Yield',
@@ -168,12 +170,6 @@ function sentimentStyle(s: string | null | undefined): string {
   if (v === 'bullish') return 'text-emerald-400';
   if (v === 'bearish') return 'text-red-400';
   return 'text-muted-foreground';
-}
-
-function mediumColMinClass(count: number): string {
-  if (count <= 2) return 'min-w-[320px]';
-  if (count === 3) return 'min-w-[260px]';
-  return 'min-w-[240px]';
 }
 
 // --------------------------------------------------------------------------------------------
@@ -257,27 +253,6 @@ function PriceRangeBar({ price, high, low }: { price: number; high: number; low:
           <div className="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border-2 border-background bg-white" />
         </div>
       </div>
-    </div>
-  );
-}
-
-function AddStockSlot({ onAdd, disabled }: { onAdd: (sym: string) => void; disabled: boolean }) {
-  return (
-    <div className="flex h-full min-h-[420px] flex-col justify-center rounded-xl border border-dashed border-border/40 bg-card/20 p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-        <Plus className="h-4 w-4" />
-        Add a stock
-      </div>
-      <GlobalSearch
-        variant="navbar"
-        placeholder="Search ticker..."
-        onSelect={onAdd}
-      />
-      {disabled && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Maximum of {MAX_COMPARE} stocks.
-        </p>
-      )}
     </div>
   );
 }
@@ -511,7 +486,7 @@ export default function ComparePage() {
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
             <Scale className="h-7 w-7 text-primary" />
           </div>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight">Stock Comparer</h1>
+          <h1 className="mt-4 text-3xl font-bold tracking-tight">Stock Comparison</h1>
           <p className="mt-2 text-base text-muted-foreground">
             Line up 2 – {MAX_COMPARE} stocks side by side to compare price, factor scores,
             AI verdicts, flags, and recent news.
@@ -557,7 +532,7 @@ export default function ComparePage() {
               <Scale className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">Stock Comparer</h1>
+              <h1 className="text-xl font-bold tracking-tight">Stock Comparison</h1>
               <p className="text-xs text-muted-foreground">
                 {symbols.length}/{MAX_COMPARE} selected · Data cached for 24h
               </p>
@@ -669,93 +644,7 @@ export default function ComparePage() {
             </Card>
           );
         })}
-
-        {symbols.length < MAX_COMPARE && (
-          <div className={mediumColMinClass(symbols.length + 1)}>
-            <AddStockSlot
-              onAdd={(s) => addSymbol(s)}
-              disabled={symbols.length >= MAX_COMPARE}
-            />
-          </div>
-        )}
       </div>
-
-      {/* Primary metrics */}
-      <Card className="border-border/30 bg-card/30">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-primary" />
-            Primary Metrics
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/30 bg-card/40">
-                  <th className="w-32 px-4 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Metric
-                  </th>
-                  {symbols.map((sym) => (
-                    <th
-                      key={sym}
-                      className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider"
-                    >
-                      {sym}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {metricDefs.map((def) => {
-                  // Compute best/worst for highlight
-                  const values: Array<{ sym: string; v: number | null }> = symbols.map((sym) => ({
-                    sym,
-                    v: dataMap[sym]?.processed
-                      ? (def.value ? def.value(dataMap[sym]!.processed!.metrics) : null)
-                      : null,
-                  }));
-                  const numericVals = values.filter((x) => x.v !== null) as Array<{ sym: string; v: number }>;
-                  let bestSym: string | null = null;
-                  let worstSym: string | null = null;
-                  if (def.direction && numericVals.length >= 2) {
-                    if (def.direction > 0) {
-                      bestSym = numericVals.reduce((a, b) => (b.v > a.v ? b : a)).sym;
-                      worstSym = numericVals.reduce((a, b) => (b.v < a.v ? b : a)).sym;
-                    } else if (def.direction < 0) {
-                      bestSym = numericVals.reduce((a, b) => (b.v < a.v ? b : a)).sym;
-                      worstSym = numericVals.reduce((a, b) => (b.v > a.v ? b : a)).sym;
-                    }
-                  }
-                  return (
-                    <tr key={def.label} className="border-b border-border/20">
-                      <td className="px-4 py-2 text-xs text-muted-foreground">{def.label}</td>
-                      {symbols.map((sym) => {
-                        const d = dataMap[sym];
-                        const formatted = d?.processed ? def.format(d.processed.metrics) : '—';
-                        const highlight =
-                          bestSym === sym
-                            ? 'text-emerald-400 font-semibold'
-                            : worstSym === sym && bestSym !== worstSym
-                              ? 'text-red-400'
-                              : '';
-                        return (
-                          <td
-                            key={sym}
-                            className={`px-4 py-2 text-right text-sm tabular-nums ${highlight}`}
-                          >
-                            {d?.loading ? <Skeleton className="ml-auto h-4 w-14" /> : formatted}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Analyst Summary */}
       <Card className="border-border/30 bg-card/30">
@@ -883,43 +772,80 @@ export default function ComparePage() {
         </CardContent>
       </Card>
 
-      {/* Active Flags */}
+      {/* Primary metrics */}
       <Card className="border-border/30 bg-card/30">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Active Flags</CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Primary Metrics
+          </CardTitle>
         </CardHeader>
-        <CardContent className={`grid gap-3 ${gridColsClass}`}>
-          {symbols.map((sym) => {
-            const d = dataMap[sym];
-            if (!d || d.loading)
-              return <Skeleton key={sym} className="h-16 w-full" />;
-            const flags = d.processed?.flags ?? [];
-            return (
-              <div
-                key={sym}
-                className="rounded-lg border border-border/30 bg-card/40 p-3 space-y-2"
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {sym}
-                </p>
-                {flags.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {flags.map((f) => (
-                      <Badge
-                        key={f}
-                        variant={NEGATIVE_FLAGS.has(f) ? 'destructive' : 'success'}
-                        className="text-[10px]"
-                      >
-                        {f}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">No active flags</p>
-                )}
-              </div>
-            );
-          })}
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/30 bg-card/40">
+                  <th className="w-32 px-4 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Metric
+                  </th>
+                  {symbols.map((sym) => (
+                    <th
+                      key={sym}
+                      className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider"
+                    >
+                      {sym}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {metricDefs.map((def) => {
+                  // Compute best/worst for highlight
+                  const values: Array<{ sym: string; v: number | null }> = symbols.map((sym) => ({
+                    sym,
+                    v: dataMap[sym]?.processed
+                      ? (def.value ? def.value(dataMap[sym]!.processed!.metrics) : null)
+                      : null,
+                  }));
+                  const numericVals = values.filter((x) => x.v !== null) as Array<{ sym: string; v: number }>;
+                  let bestSym: string | null = null;
+                  let worstSym: string | null = null;
+                  if (def.direction && numericVals.length >= 2) {
+                    if (def.direction > 0) {
+                      bestSym = numericVals.reduce((a, b) => (b.v > a.v ? b : a)).sym;
+                      worstSym = numericVals.reduce((a, b) => (b.v < a.v ? b : a)).sym;
+                    } else if (def.direction < 0) {
+                      bestSym = numericVals.reduce((a, b) => (b.v < a.v ? b : a)).sym;
+                      worstSym = numericVals.reduce((a, b) => (b.v > a.v ? b : a)).sym;
+                    }
+                  }
+                  return (
+                    <tr key={def.label} className="border-b border-border/20">
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{def.label}</td>
+                      {symbols.map((sym) => {
+                        const d = dataMap[sym];
+                        const formatted = d?.processed ? def.format(d.processed.metrics) : '—';
+                        const highlight =
+                          bestSym === sym
+                            ? 'text-emerald-400 font-semibold'
+                            : worstSym === sym && bestSym !== worstSym
+                              ? 'text-red-400'
+                              : '';
+                        return (
+                          <td
+                            key={sym}
+                            className={`px-4 py-2 text-right text-sm tabular-nums ${highlight}`}
+                          >
+                            {d?.loading ? <Skeleton className="ml-auto h-4 w-14" /> : formatted}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
 

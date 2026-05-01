@@ -26,6 +26,14 @@ export async function fetchStockMetrics(
       const financial = quote.financialData ?? {};
       const profile = quote.assetProfile ?? {};
 
+      // Yahoo returns the security type on the `price` module (`EQUITY`, `ETF`,
+      // `MUTUALFUND`, `INDEX`, etc.). We use this to keep ETFs/funds out of the
+      // fundamental screener while still allowing search + detail pages.
+      const quoteType =
+        typeof price.quoteType === 'string'
+          ? price.quoteType.toUpperCase()
+          : 'EQUITY';
+
       const marketCap = price.marketCap ?? null;
       const freeCashflow = financial.freeCashflow ?? null;
       const ev = keyStats.enterpriseValue ?? null;
@@ -134,6 +142,7 @@ export async function fetchStockMetrics(
         'Company Name': price.longName ?? price.shortName ?? 'N/A',
         Industry: profile.industry ?? 'N/A',
         Sector: profile.sector ?? 'N/A',
+        quoteType,
         'P/E': pe,
         ROE: roe,
         'D/E': de,
@@ -269,6 +278,17 @@ function trimToMostRecentSession(points: PriceHistoryPoint[]): PriceHistoryPoint
   return byDay.get(lastDay) ?? points;
 }
 
+// Quote types that we surface in the global search dropdown. Equities are the
+// default flow, but users also want to look up ETFs (e.g. SMH, EUAD), index
+// funds, and tradeable indices for context. The screener still filters these
+// out separately so they don't pollute fundamental rankings.
+const SEARCHABLE_QUOTE_TYPES = new Set([
+  'EQUITY',
+  'ETF',
+  'MUTUALFUND',
+  'INDEX',
+]);
+
 export async function searchTickers(
   query: string
 ): Promise<Array<{ symbol: string; name: string; type: string; exchange: string }>> {
@@ -277,15 +297,19 @@ export async function searchTickers(
     return (results.quotes ?? [])
       .filter(
         (q: any) =>
-          q.quoteType === 'EQUITY' &&
-          q.symbol &&
-          !q.symbol.includes('.')
+          typeof q.symbol === 'string' &&
+          q.symbol.length > 0 &&
+          // Drop foreign-exchange suffixed symbols (e.g. NESN.SW). Yahoo's
+          // index symbols start with `^` (e.g. ^GSPC) which we still want
+          // to allow even though they aren't a "stock".
+          (q.symbol.startsWith('^') || !q.symbol.includes('.')) &&
+          SEARCHABLE_QUOTE_TYPES.has((q.quoteType ?? '').toUpperCase())
       )
       .slice(0, 10)
       .map((q: any) => ({
         symbol: q.symbol ?? '',
         name: q.longname ?? q.shortname ?? q.symbol ?? '',
-        type: q.quoteType ?? '',
+        type: (q.quoteType ?? '').toString().toUpperCase(),
         exchange: q.exchange ?? '',
       }));
   } catch (err) {

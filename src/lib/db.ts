@@ -16,6 +16,7 @@ export async function saveMetrics(metrics: StockMetrics): Promise<number | null>
         company_name: metrics['Company Name'] ?? 'N/A',
         industry: metrics.Industry ?? 'N/A',
         sector: metrics.Sector ?? 'N/A',
+        quote_type: metrics.quoteType ?? 'EQUITY',
       },
       { onConflict: 'ticker' }
     );
@@ -147,6 +148,14 @@ export async function getAllLatestMetrics(): Promise<StockMetrics[]> {
   if (!fetches) return [];
 
   for (const row of fetches) {
+    // Only equities are useful in the screener / fundamental rankings — ETFs,
+    // mutual funds and indices don't report the metrics we score on, so they'd
+    // either get artificially low scores or pollute sector aggregates. Rows
+    // without a quote_type set yet (legacy/un-backfilled) are still treated
+    // as equities so we don't accidentally hide valid stocks.
+    const stockRow = row.stocks as { quote_type?: string | null } | null | undefined;
+    const qt = (stockRow?.quote_type ?? 'EQUITY').toUpperCase();
+    if (qt !== 'EQUITY') continue;
     allMetrics.push(rowToMetrics(row, row.stocks));
   }
 
@@ -161,7 +170,11 @@ export async function getAllTickers(): Promise<string[]> {
 
 export async function getUniqueSectors(): Promise<string[]> {
   const sb = getServiceClient();
-  const { data } = await sb.from('stocks').select('sector');
+  // Only count sectors from equities; ETFs/funds don't have a meaningful sector.
+  const { data } = await sb
+    .from('stocks')
+    .select('sector, quote_type')
+    .or('quote_type.is.null,quote_type.eq.EQUITY');
   if (!data) return [];
   const sectors = [...new Set(data.map((r) => r.sector).filter((s) => s && s !== 'N/A'))];
   return sectors.sort();

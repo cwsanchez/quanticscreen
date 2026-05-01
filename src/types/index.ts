@@ -3,7 +3,24 @@ export interface Stock {
   company_name: string;
   industry: string;
   sector: string;
+  quote_type?: string | null;
 }
+
+/**
+ * Yahoo Finance quote types we care about. We treat anything that is not
+ * `EQUITY` (i.e. ETFs, mutual funds, indices, currencies, etc.) as "non-equity"
+ * and exclude it from the screener since fundamental metrics like revenue
+ * growth, ROE, P/E, etc. are either missing or meaningless for those.
+ */
+export type QuoteType =
+  | 'EQUITY'
+  | 'ETF'
+  | 'MUTUALFUND'
+  | 'INDEX'
+  | 'CURRENCY'
+  | 'CRYPTOCURRENCY'
+  | 'FUTURE'
+  | 'OPTION';
 
 export interface MetricFetch {
   fetch_id: number;
@@ -46,6 +63,9 @@ export interface StockMetrics {
   'Company Name': string;
   Industry: string;
   Sector: string;
+  /** Yahoo Finance quote type (EQUITY, ETF, MUTUALFUND, INDEX, ...). Optional
+   *  for backward compatibility with cached/in-flight payloads. */
+  quoteType?: string;
   'P/E': number | 'N/A';
   ROE: number | 'N/A';
   'D/E': number | 'N/A';

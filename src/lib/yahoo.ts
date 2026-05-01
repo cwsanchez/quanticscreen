@@ -177,39 +177,96 @@ export async function fetchStockMetrics(
   return null;
 }
 
+export type HistoryRange = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y' | 'Max';
+
+type YahooInterval = '1m' | '5m' | '15m' | '30m' | '1h' | '1d' | '1wk' | '1mo';
+
+interface RangeSpec {
+  interval: YahooInterval;
+  /** Days back from now. null = since 1970 (max). */
+  days: number | null;
+  /** Whether the returned points are intraday (include time component). */
+  intraday: boolean;
+}
+
+const RANGE_SPECS: Record<HistoryRange, RangeSpec> = {
+  '1D': { interval: '5m', days: 2, intraday: true },
+  '1W': { interval: '30m', days: 7, intraday: true },
+  '1M': { interval: '1d', days: 35, intraday: false },
+  '3M': { interval: '1d', days: 95, intraday: false },
+  '6M': { interval: '1d', days: 190, intraday: false },
+  '1Y': { interval: '1d', days: 370, intraday: false },
+  '5Y': { interval: '1wk', days: 365 * 5 + 10, intraday: false },
+  Max: { interval: '1mo', days: null, intraday: false },
+};
+
 export async function fetchPriceHistory(
   ticker: string,
-  period: string = '1y'
+  period: string = '1Y'
 ): Promise<PriceHistoryPoint[]> {
-  try {
-    const periodMap: Record<string, number> = {
-      '1m': 30,
-      '3m': 90,
-      '6m': 180,
-      '1y': 365,
-      '2y': 730,
-      '5y': 1825,
-    };
-    const days = periodMap[period] ?? 365;
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const normalized = normalizeRange(period);
+  const spec = RANGE_SPECS[normalized];
+  const startDate = spec.days == null
+    ? new Date('1970-01-01')
+    : new Date(Date.now() - spec.days * 24 * 60 * 60 * 1000);
 
+  try {
     const result: any = await yahooFinance.chart(ticker, {
-      period1: startDate.toISOString().split('T')[0],
-      interval: '1d',
+      period1: startDate,
+      interval: spec.interval,
     });
 
     if (!result.quotes || result.quotes.length === 0) return [];
 
-    return result.quotes
+    const points = result.quotes
       .filter((q: any) => q.close != null && q.date != null)
-      .map((q: any) => ({
-        date: new Date(q.date).toISOString().split('T')[0],
-        close: Number(Number(q.close).toFixed(2)),
-      }));
+      .map((q: any) => {
+        const iso = new Date(q.date).toISOString();
+        return {
+          date: spec.intraday ? iso : iso.split('T')[0],
+          close: Number(Number(q.close).toFixed(2)),
+        } satisfies PriceHistoryPoint;
+      });
+
+    if (normalized === '1D') {
+      // Yahoo's 5m interval will include the last trading session even when
+      // called on a weekend. Trim to the most recent trading day.
+      return trimToMostRecentSession(points);
+    }
+    return points;
   } catch (err) {
-    console.error(`Failed to fetch history for ${ticker}:`, err);
+    console.error(`Failed to fetch history for ${ticker} (${period}):`, err);
     return [];
   }
+}
+
+function normalizeRange(period: string): HistoryRange {
+  const aliases: Record<string, HistoryRange> = {
+    '1d': '1D',
+    '1w': '1W',
+    '5d': '1W',
+    '1m': '1M',
+    '1mo': '1M',
+    '3m': '3M',
+    '6m': '6M',
+    '1y': '1Y',
+    '5y': '5Y',
+    max: 'Max',
+  };
+  return aliases[period.toLowerCase()] ?? (period as HistoryRange) ?? '1Y';
+}
+
+function trimToMostRecentSession(points: PriceHistoryPoint[]): PriceHistoryPoint[] {
+  if (points.length === 0) return points;
+  const byDay = new Map<string, PriceHistoryPoint[]>();
+  for (const p of points) {
+    const d = p.date.slice(0, 10);
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d)!.push(p);
+  }
+  const days = [...byDay.keys()].sort();
+  const lastDay = days[days.length - 1];
+  return byDay.get(lastDay) ?? points;
 }
 
 export async function searchTickers(

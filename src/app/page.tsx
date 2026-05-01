@@ -20,15 +20,44 @@ export default function HomePage() {
     router.push(`/ticker/${symbol}`);
   };
 
+  const features = [
+    {
+      icon: Scale,
+      title: 'Side-by-Side Compare',
+      desc: 'Line up 2 – 4 stocks with price, ranges, factor scores, AI verdicts, news, and flags.',
+    },
+    {
+      icon: BarChart3,
+      title: 'Multi-Factor Scoring',
+      desc: 'Weighted scoring across 8+ fundamental metrics with Value, Growth, Momentum, and Quality boosts.',
+    },
+    {
+      icon: Sparkles,
+      title: 'xAI Grok Analysis',
+      desc: 'Every stock gets an AI-generated research note with bull / bear cases, sentiment, and a verdict.',
+    },
+    {
+      icon: TrendingUp,
+      title: 'Smart Flag Detection',
+      desc: '8 analytical flags: Undervalued, Quality Moat, GARP, Momentum Building, Debt Burden, and more.',
+    },
+  ];
+
   return (
     <div className="flex flex-col lg:flex-row gap-6">
-      <aside className="w-full lg:w-80 shrink-0 order-2 lg:order-1">
+      {/*
+        Watchlist sidebar.
+        - On large screens (lg+): rendered as the left-hand sidebar, sticky.
+        - On narrow screens (<lg): hidden here and rendered inline below the
+          search hero so it appears above the explainer cards.
+      */}
+      <aside className="hidden lg:block w-80 shrink-0">
         <div className="lg:sticky lg:top-20">
           <WatchlistSidebar onSelectStock={handleSelect} />
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col items-center order-1 lg:order-2">
+      <div className="flex-1 flex flex-col items-center">
         <div className="mt-4 flex flex-col items-center text-center sm:mt-8">
           <div className="flex items-center gap-2 rounded-full border bg-card/50 px-4 py-1.5 text-sm text-muted-foreground backdrop-blur">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -50,29 +79,13 @@ export default function HomePage() {
           <GlobalSearch variant="hero" autoFocus onSelect={handleSelect} />
         </div>
 
+        {/* Narrow-screen-only watchlist: search → watchlist → explainer cards */}
+        <div className="mt-8 w-full max-w-2xl lg:hidden">
+          <WatchlistSidebar onSelectStock={handleSelect} />
+        </div>
+
         <div className="mt-16 grid w-full max-w-4xl gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            {
-              icon: Scale,
-              title: 'Side-by-Side Compare',
-              desc: 'Line up 2 – 4 stocks with price, ranges, factor scores, AI verdicts, news, and flags.',
-            },
-            {
-              icon: BarChart3,
-              title: 'Multi-Factor Scoring',
-              desc: 'Weighted scoring across 8+ fundamental metrics with Value, Growth, Momentum, and Quality boosts.',
-            },
-            {
-              icon: Sparkles,
-              title: 'xAI Grok Analysis',
-              desc: 'Every stock gets an AI-generated research note with bull / bear cases, sentiment, and a verdict.',
-            },
-            {
-              icon: TrendingUp,
-              title: 'Smart Flag Detection',
-              desc: '8 analytical flags: Undervalued, Quality Moat, GARP, Momentum Building, Debt Burden, and more.',
-            },
-          ].map((feature) => (
+          {features.map((feature) => (
             <Card
               key={feature.title}
               className="border-border/30 bg-card/30 backdrop-blur transition-all hover:border-border/50"

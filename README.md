@@ -17,7 +17,7 @@ QuanticScreen is a personal stock research dashboard that combines real-time Yah
 
 - **Global Search** — Persistent search bar in the top navbar (next to the logo) works on every page, with type-ahead dropdown and Enter-to-jump support
 - **Dashboard** — Hero search, pinned watchlist sidebar, and direct jump-off CTAs to every other surface
-- **Stock Comparer** — Line up 2 – 4 stocks side by side with price, 52-week range, primary metrics, analyst summary, xAI Grok verdict + sentiment, active flags, factor scores, preset rankings, and recent news
+- **Stock Comparison** — Line up 2 – 4 stocks side by side with price, 52-week range, primary metrics (with revenue/earnings growth), analyst summary, xAI Grok verdict + sentiment, factor scores, preset rankings, and recent news
 - **Personal Watchlist** — Sidebar showing your pinned stocks with live pricing, sparklines, and one-click access to full reports (saved in localStorage — works instantly, no account needed)
 - **Professional Stock Detail** — Sticky header with live price, interactive chart with 8 range selectors (1D / 1W / 1M / 3M / 6M / 1Y / 5Y / Max), key-stats bar, two-column layout with factor scores, ratios, growth metrics, flags, and rankings
 - **AI Analysis (xAI Grok)** — Professional weekly AI-generated company analysis with Bull/Bear cases, institutional & retail sentiment, key metrics, verdict, and confidence — cached in Supabase and throttled for cost control

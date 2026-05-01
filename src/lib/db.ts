@@ -1,5 +1,5 @@
 import { getServiceClient } from './supabase';
-import type { StockMetrics, PriceHistoryPoint, AiReview } from '@/types';
+import type { StockMetrics, PriceHistoryPoint, AiReview, StockNews, NewsHeadline } from '@/types';
 
 function val(v: unknown): unknown {
   return v === 'N/A' ? null : v;
@@ -307,6 +307,69 @@ export async function getTickersWithStaleAiReviews(
     .gte('generated_at', cutoff);
   const fresh = new Set((data ?? []).map((r) => r.ticker));
   return candidates.filter((t) => !fresh.has(t));
+}
+
+export async function getLatestStockNews(
+  ticker: string,
+  maxAgeHours: number = 24
+): Promise<StockNews | null> {
+  const sb = getServiceClient();
+  const { data } = await sb
+    .from('stock_news')
+    .select('*')
+    .eq('ticker', ticker)
+    .order('generated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const ageMs = Date.now() - new Date(data.generated_at).getTime();
+  if (ageMs > maxAgeHours * 60 * 60 * 1000) return null;
+  return normalizeStockNews(data);
+}
+
+export async function saveStockNews(
+  news: Omit<StockNews, 'id' | 'generated_at'> & { generated_at?: string }
+): Promise<StockNews | null> {
+  const sb = getServiceClient();
+  const { data, error } = await sb
+    .from('stock_news')
+    .insert({
+      ticker: news.ticker,
+      generated_at: news.generated_at ?? new Date().toISOString(),
+      summary: news.summary,
+      headlines: news.headlines,
+      model: news.model ?? null,
+    })
+    .select('*')
+    .single();
+  if (error) {
+    console.error('Stock news insert error:', error);
+    return null;
+  }
+  return normalizeStockNews(data);
+}
+
+function normalizeStockNews(row: Record<string, unknown>): StockNews {
+  const rawHeadlines = row.headlines;
+  let headlines: NewsHeadline[] = [];
+  if (Array.isArray(rawHeadlines)) {
+    headlines = rawHeadlines as NewsHeadline[];
+  } else if (typeof rawHeadlines === 'string') {
+    try {
+      const parsed = JSON.parse(rawHeadlines);
+      headlines = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      headlines = [];
+    }
+  }
+  return {
+    id: row.id as number | undefined,
+    ticker: String(row.ticker),
+    generated_at: String(row.generated_at),
+    summary: (row.summary as string) ?? '',
+    headlines,
+    model: (row.model as string | null) ?? null,
+  };
 }
 
 export async function pruneOldMetrics(

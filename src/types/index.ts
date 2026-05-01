@@ -156,3 +156,19 @@ export interface AiReview {
   confidence: number;
   model?: string | null;
 }
+
+export interface NewsHeadline {
+  title: string;
+  url: string;
+  source: string;
+  published_at: string | null;
+}
+
+export interface StockNews {
+  id?: number;
+  ticker: string;
+  generated_at: string;
+  summary: string;
+  headlines: NewsHeadline[];
+  model?: string | null;
+}

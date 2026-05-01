@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -19,6 +19,7 @@ import {
   Building2,
   Users,
   Gauge,
+  Newspaper,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +36,7 @@ import {
   NEGATIVE_FLAGS,
 } from '@/lib/processor';
 import { PinButton } from '@/components/WatchlistSidebar';
+import { StockNewsOverviewCard, StockNewsPanel } from '@/components/StockNews';
 import type { ProcessedResult, PriceHistoryPoint, AiReview } from '@/types';
 import {
   ResponsiveContainer,
@@ -46,8 +48,9 @@ import {
   CartesianGrid,
 } from 'recharts';
 
-const TIME_RANGES = ['1M', '3M', '6M', '1Y', '5Y', 'Max'] as const;
+const TIME_RANGES = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'Max'] as const;
 type TimeRange = typeof TIME_RANGES[number];
+const INTRADAY_RANGES = new Set<TimeRange>(['1D', '1W']);
 
 function filterDataByRange(data: PriceHistoryPoint[], range: TimeRange): PriceHistoryPoint[] {
   if (!data || data.length === 0) return [];
@@ -55,6 +58,8 @@ function filterDataByRange(data: PriceHistoryPoint[], range: TimeRange): PriceHi
   const now = new Date();
   const cutoff = new Date();
   switch (range) {
+    case '1D': cutoff.setDate(now.getDate() - 1); break;
+    case '1W': cutoff.setDate(now.getDate() - 7); break;
     case '1M': cutoff.setMonth(now.getMonth() - 1); break;
     case '3M': cutoff.setMonth(now.getMonth() - 3); break;
     case '6M': cutoff.setMonth(now.getMonth() - 6); break;
@@ -65,17 +70,44 @@ function filterDataByRange(data: PriceHistoryPoint[], range: TimeRange): PriceHi
   return filtered.length > 0 ? filtered : data;
 }
 
-function PriceChart({ data, range }: { data: PriceHistoryPoint[]; range: TimeRange }) {
-  const filtered = useMemo(() => filterDataByRange(data, range), [data, range]);
-  if (!filtered || filtered.length === 0) {
-    return <div className="flex h-80 items-center justify-center text-muted-foreground">No price data available</div>;
+function formatRangeLabel(range: TimeRange, iso: string): string {
+  const d = new Date(iso);
+  if (INTRADAY_RANGES.has(range)) {
+    if (range === '1D') {
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    return d.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric' });
   }
-  const isPositive = filtered[filtered.length - 1].close >= filtered[0].close;
+  if (range === '5Y' || range === 'Max') {
+    return d.toLocaleDateString('en-US', { year: '2-digit', month: 'short' });
+  }
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatTooltipLabel(range: TimeRange, iso: string): string {
+  const d = new Date(iso);
+  if (INTRADAY_RANGES.has(range)) {
+    return d.toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }
+  return d.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function PriceChart({ data, range }: { data: PriceHistoryPoint[]; range: TimeRange }) {
+  if (!data || data.length === 0) {
+    return <div className="flex h-[380px] items-center justify-center text-muted-foreground">No price data available</div>;
+  }
+  const isPositive = data[data.length - 1].close >= data[0].close;
   const color = isPositive ? '#22c55e' : '#ef4444';
 
   return (
     <ResponsiveContainer width="100%" height={380}>
-      <AreaChart data={filtered} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+      <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
         <defs>
           <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor={color} stopOpacity={0.2} />
@@ -86,7 +118,7 @@ function PriceChart({ data, range }: { data: PriceHistoryPoint[]; range: TimeRan
         <XAxis
           dataKey="date"
           tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-          tickFormatter={(v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          tickFormatter={(v) => formatRangeLabel(range, v)}
           interval="preserveStartEnd"
           minTickGap={60}
           axisLine={false}
@@ -109,7 +141,7 @@ function PriceChart({ data, range }: { data: PriceHistoryPoint[]; range: TimeRan
             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
           }}
           formatter={(val) => [`$${Number(val).toFixed(2)}`, 'Price']}
-          labelFormatter={(l) => new Date(l).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+          labelFormatter={(l) => formatTooltipLabel(range, l)}
         />
         <Area
           type="monotone"
@@ -624,6 +656,8 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
   const [rankingsLoading, setRankingsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>('1Y');
+  const [rangeHistory, setRangeHistory] = useState<Record<string, PriceHistoryPoint[]>>({});
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
 
   const fetchData = async (force = false) => {
@@ -675,6 +709,56 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
 
   useEffect(() => { fetchData(); }, [symbol]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (data) computeRankings(); }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset cache when symbol changes (and seed with the default 1Y from the fetch response).
+  useEffect(() => {
+    setRangeHistory({});
+  }, [symbol]);
+
+  // When the default payload comes back, seed cached 1Y history so 1M/3M/6M/1Y
+  // don't re-fetch. 1D/1W/5Y/Max always fetch their own payload.
+  useEffect(() => {
+    if (data?.history && data.history.length > 0) {
+      setRangeHistory((prev) => {
+        if (prev['1Y']) return prev;
+        return { ...prev, '1Y': data.history };
+      });
+    }
+  }, [data]);
+
+  // Fetch history whenever the user picks a range that isn't cached yet.
+  useEffect(() => {
+    if (!data) return;
+    if (rangeHistory[timeRange]) return;
+
+    let cancelled = false;
+    const load = async () => {
+      setHistoryLoading(true);
+      try {
+        const res = await fetch(`/api/stocks/history?ticker=${symbol}&range=${timeRange}`);
+        if (!res.ok) throw new Error(`history ${res.status}`);
+        const { history } = (await res.json()) as { history: PriceHistoryPoint[] };
+        if (!cancelled) {
+          setRangeHistory((prev) => ({ ...prev, [timeRange]: history ?? [] }));
+        }
+      } catch {
+        if (!cancelled) {
+          // Fall back to filtering the 1Y data client-side so at least something renders.
+          setRangeHistory((prev) => ({
+            ...prev,
+            [timeRange]: filterDataByRange(data.history ?? [], timeRange),
+          }));
+        }
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, timeRange, data]);
 
   if (loading) {
     return (
@@ -755,8 +839,11 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
       <Card className="border-border/30 bg-card/30">
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">Price History</h2>
-            <div className="flex gap-1">
+            <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+              Price History
+              {historyLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </h2>
+            <div className="flex flex-wrap gap-1">
               {TIME_RANGES.map((r) => (
                 <button
                   key={r}
@@ -772,7 +859,10 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
               ))}
             </div>
           </div>
-          <PriceChart data={history} range={timeRange} />
+          <PriceChart
+            data={rangeHistory[timeRange] ?? filterDataByRange(history, timeRange)}
+            range={timeRange}
+          />
         </CardContent>
       </Card>
 
@@ -804,6 +894,10 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
               <TabsTrigger value="ai" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">
                 <Sparkles className="mr-1 h-3 w-3 text-primary" />
                 AI Analysis
+              </TabsTrigger>
+              <TabsTrigger value="news" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">
+                <Newspaper className="mr-1 h-3 w-3 text-primary" />
+                News
               </TabsTrigger>
             </TabsList>
 
@@ -857,6 +951,8 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
               </Card>
 
               <AiSnapshot symbol={symbol} onViewFull={() => setActiveTab('ai')} />
+
+              <StockNewsOverviewCard symbol={symbol} onViewFull={() => setActiveTab('news')} />
 
               <div>
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -1005,6 +1101,11 @@ export default function StockDetail({ symbol, onBack }: StockDetailProps) {
             {/* AI Analysis Tab */}
             <TabsContent value="ai" className="mt-4">
               <AiAnalysisPanel symbol={symbol} />
+            </TabsContent>
+
+            {/* News Tab */}
+            <TabsContent value="news" className="mt-4">
+              <StockNewsPanel symbol={symbol} />
             </TabsContent>
 
             {/* Rankings Tab */}

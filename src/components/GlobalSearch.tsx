@@ -12,6 +12,19 @@ interface SearchResult {
   exchange: string;
 }
 
+function formatQuoteType(type: string): string {
+  switch (type.toUpperCase()) {
+    case 'ETF':
+      return 'ETF';
+    case 'MUTUALFUND':
+      return 'Fund';
+    case 'INDEX':
+      return 'Index';
+    default:
+      return type;
+  }
+}
+
 interface GlobalSearchProps {
   placeholder?: string;
   className?: string;
@@ -145,13 +158,20 @@ export function GlobalSearch({
                 e.preventDefault();
                 handleSelect(r.symbol);
               }}
-              className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-accent"
+              className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
             >
-              <div className="min-w-0 flex-1 pr-3">
+              <div className="min-w-0 flex-1">
                 <span className="font-semibold">{r.symbol}</span>
                 <span className="ml-2 text-sm text-muted-foreground truncate">{r.name}</span>
               </div>
-              <span className="shrink-0 text-xs text-muted-foreground">{r.exchange}</span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {r.type && r.type !== 'EQUITY' && (
+                  <span className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                    {formatQuoteType(r.type)}
+                  </span>
+                )}
+                <span className="text-xs text-muted-foreground">{r.exchange}</span>
+              </div>
             </button>
           ))}
         </div>

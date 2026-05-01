@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
           company_name: fetched['Company Name'] ?? 'N/A',
           industry: fetched.Industry ?? 'N/A',
           sector: fetched.Sector ?? 'N/A',
+          quote_type: fetched.quoteType ?? 'EQUITY',
         },
         { onConflict: 'ticker' }
       );
